@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import least_squares
+from scipy.optimize import brentq, least_squares
 
 MODELS = ("exponential", "hyperbolic", "harmonic")
 
@@ -120,10 +120,11 @@ def forecast(fit, hist, q_limit=5.0, d_term_annual=0.08, max_years=50):
     below the economic limit q_limit (bbl/day) or max_years from the peak.
 
     d_term_annual is the terminal decline as an effective annual rate.
+    hist=None forecasts from month 0 (a well with no production yet).
     Returns a DataFrame with date, t, bopd and monthly oil_bbl.
     """
     d_term = nominal_from_effective_annual(d_term_annual)
-    t_last = int(hist["t"].iloc[-1])
+    t_last = int(hist["t"].iloc[-1]) if hist is not None else -1
     t = np.arange(t_last + 1, max_years * 12)
     q = fit.rate(t, d_term)
     keep = q >= q_limit
@@ -138,3 +139,38 @@ def forecast(fit, hist, q_limit=5.0, d_term_annual=0.08, max_years=50):
 def eur(df_lease, fc):
     """EUR (bbl): all actual oil produced on the lease plus the forecast."""
     return float(df_lease["oil_bbl"].sum(skipna=True) + fc["oil_bbl"].sum())
+
+
+def nominal_from_effective_initial(d_eff, b):
+    """Nominal monthly Di from an effective annual initial decline (first-year
+    drop, e.g. 0.6 = rate falls 60% in year one) for a given b-factor."""
+    if b < 1e-6:
+        return nominal_from_effective_annual(d_eff)
+    return ((1 - d_eff) ** (-b) - 1) / (12 * b)
+
+
+def type_curve(target_eur, start, b, d_eff_initial, d_term_annual=0.08, q_limit=5.0, max_years=50):
+    """Production forecast for an undrilled well, sized so it recovers target_eur.
+
+    With no production history, the shape of the decline (b, initial decline)
+    comes from analog wells, and the initial rate qi is solved so the volume
+    produced before the rate drops below q_limit equals target_eur (bbl).
+    Returns (DeclineFit, forecast DataFrame); the forecast is empty if the
+    target is too small to produce above q_limit at all.
+    """
+    di = nominal_from_effective_initial(d_eff_initial, b)
+    start = pd.Timestamp(start)
+
+    def make(qi):
+        fit = DeclineFit("type curve", qi, di, b, start, np.nan)
+        return fit, forecast(fit, None, q_limit=q_limit, d_term_annual=d_term_annual, max_years=max_years)
+
+    def shortfall(qi):
+        return make(qi)[1]["oil_bbl"].sum() - target_eur
+
+    lo, hi = q_limit * 1.0001, 100_000.0
+    if target_eur <= 0 or shortfall(lo) > 0:
+        return make(lo)[0], make(lo)[1].iloc[:0]
+    if shortfall(hi) < 0:
+        raise ValueError(f"EUR of {target_eur:,.0f} bbl needs an initial rate above {hi:,.0f} bbl/day.")
+    return make(brentq(shortfall, lo, hi, xtol=0.01))

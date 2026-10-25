@@ -97,21 +97,79 @@ class PDQSession:
         return records
 
 
-def load_production(path):
-    """Load a saved production CSV and clean it for analysis.
+# PDQ's internal district codes (what the website's form sends) by RRC district name
+DISTRICT_CODES = {"01": "01", "02": "02", "03": "03", "04": "04", "05": "05", "06": "06",
+                  "6E": "07", "7B": "08", "7C": "09", "08": "10", "8A": "11", "09": "13", "10": "14"}
+
+
+def fetch_lease(lease_no, district, start="1993-01", end=None, timeout=60):
+    """Monthly production for any Texas oil lease, via PDQ's Specific Lease Query.
+
+    lease_no : RRC oil lease number (found on the lease's sign, permits, or the
+               RRC's online maps)
+    district : RRC district name, e.g. "08" or "7C"
+    Returns raw records in the same layout as the saved CSV; pass them through
+    clean_production. Raises ValueError if PDQ has no such oil lease.
+    """
+    end = end or pd.Timestamp.today().strftime("%Y-%m")
+    (sy, sm), (ey, em) = start.split("-"), end.split("-")
+    s = requests.Session()
+    s.headers["User-Agent"] = "Mozilla/5.0 (PETE Production Analyzer)"
+    r = s.get(BASE + "/PDQ/quickLeaseReportBuilderAction.do", timeout=timeout)
+    action = re.search(r'name="QuickLeaseSearchForm" method="post" action="([^"]+)"', r.text, re.I)
+    if not action:
+        raise RuntimeError("PDQ lease search page has changed; the fetcher needs updating.")
+    r = s.post(BASE + action.group(1), timeout=timeout, data={
+        "wellType": "Oil", "leaseNumber": str(lease_no), "district": DISTRICT_CODES[district],
+        "startMonth": sm, "startYear": sy, "endMonth": em, "endYear": ey, "submit": "Submit"})
+    header = re.search(r"Lease Name:\s*(.*?),\s*Lease No", re.sub(r"<[^>]+>", " ", r.text))
+    if not header:
+        raise ValueError(f"No oil lease {lease_no} found in District {district}.")
+    lease_name = re.sub(r"\s+", " ", unescape(header.group(1))).strip()
+    page = s.get(BASE + "/PDQ/changePageViewAction.do", params={"pagesize": "500"}, timeout=timeout).text
+
+    records, field, field_no = [], "", ""
+    for c in _rows(page):
+        if len(c) >= 5 and re.fullmatch(r"[A-Z][a-z]{2} \d{4}", c[0]):
+            mon, year = c[0].split()
+            if len(c) > 8 and c[7]:
+                field, field_no = c[7], c[8]
+            records.append({
+                "lease_no": int(lease_no), "lease_name": lease_name,
+                "field": field, "field_no": field_no,
+                "date": f"{year}-{MONTHS[mon]:02d}",
+                "oil_bbl": c[1], "gas_mcf": c[3],
+                "operator": c[5] if len(c) > 5 else "",
+            })
+    if not records:
+        raise ValueError(f"Lease {lease_no} (District {district}) has no monthly production on PDQ.")
+    return records
+
+
+def clean_production(df):
+    """Clean raw production records for analysis.
 
     - "NO RPT" (operator filed no report) becomes missing, not zero.
+    - Trailing unreported months are dropped: they're months the RRC hasn't
+      received reports for yet, not months the lease stopped producing.
     - Operator name is only printed when it changes, so it is filled forward.
     - Adds days-in-month and daily rates (BOPD, MCF/D).
     """
-    df = pd.read_csv(path, dtype={"oil_bbl": str, "gas_mcf": str, "operator": str})
+    df = pd.DataFrame(df).astype({"oil_bbl": str, "gas_mcf": str, "operator": str})
     df["date"] = pd.to_datetime(df["date"], format="%Y-%m")
     for col in ("oil_bbl", "gas_mcf"):
         df[col] = pd.to_numeric(df[col].str.replace(",", ""), errors="coerce")
-    df["operator"] = df["operator"].replace("", pd.NA)
-    df["operator"] = df.groupby("lease_no")["operator"].ffill()
+    df["operator"] = df["operator"].replace({"": pd.NA, "nan": pd.NA})
     df = df.sort_values(["lease_no", "date"]).reset_index(drop=True)
+    df["operator"] = df.groupby("lease_no")["operator"].ffill()
+    last_reported = df[df["oil_bbl"].notna()].groupby("lease_no")["date"].max()
+    df = df[df["date"] <= df["lease_no"].map(last_reported)].reset_index(drop=True)
     df["days"] = df["date"].dt.days_in_month
     df["bopd"] = df["oil_bbl"] / df["days"]
     df["gas_mcfd"] = df["gas_mcf"] / df["days"]
     return df
+
+
+def load_production(path):
+    """Load a saved production CSV and clean it (see clean_production)."""
+    return clean_production(pd.read_csv(path, dtype={"oil_bbl": str, "gas_mcf": str, "operator": str}))

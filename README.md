@@ -1,14 +1,24 @@
 # PETE Production Analyzer
 
-An upstream appraisal dashboard that takes a well from rock to dollars:
+An upstream appraisal dashboard that takes a well from rock to dollars. Upload a
+LAS well log and it works out:
 
 1. **Well log** → net pay, porosity, water saturation (via the
    [PETE Python Log Reader](../pete-python-log-reader))
 2. **Volumetrics** → original oil in place (OOIP)
-3. **Decline curve** → Arps fit to real Texas Railroad Commission production, EUR
-4. **Cross-check** → recovery factor = EUR ÷ OOIP, flagged if implausible
-5. **Economics** → DCF: full-cycle NPV, IRR, payout, breakeven oil price, and the
-   remaining (PDP) value of the producing well against an asking price
+3. **Production forecast** → EUR, one of two ways:
+   - **From the log alone** (pre-drill appraisal): EUR = OOIP × assumed recovery
+     factor, spread over time with an analog type curve
+   - **From production data** (optional): an Arps decline fitted to the well's actual
+     Texas Railroad Commission production. Fetch any Texas oil lease by number, or
+     use one of the bundled Spraberry examples. The recovery factor (EUR ÷ OOIP) then
+     becomes a cross-check between the log and the production.
+4. **Economics** → DCF: NPV, IRR, payout, breakeven oil price, and for producing
+   wells, the remaining (PDP) value against an asking price
+
+Starting assumptions (drainage area, recovery factor, decline shape, capex, LOE)
+come from the chosen well type, vertical conventional or horizontal tight oil, and
+are all editable.
 
 ## Setup (Ubuntu / WSL)
 
@@ -42,6 +52,11 @@ Then open http://localhost:8501.
 
 ## Method
 
+**Log-only type curve** (`production/decline.type_curve`)
+- Target EUR = OOIP × recovery factor. The decline shape (b, first-year decline)
+  comes from analog wells; the initial rate is solved so the forecast recovers
+  exactly the target EUR before falling below the cutoff rate.
+
 **Decline curves** (`production/decline.py`)
 - Fits start at peak rate by default; the fit window can be moved later to skip a
   workover or refrac.
@@ -70,4 +85,6 @@ Then open http://localhost:8501.
   leases, which are usually one well each, but this isn't verified per lease.
 - PDQ lease data has no API numbers, so logs and leases are paired by hand rather
   than joined on API.
+- Lease fetching supports oil leases only; gas wells are reported separately by
+  the RRC.
 - Prices are flat for the forecast; there is no forward strip.

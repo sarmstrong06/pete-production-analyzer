@@ -31,6 +31,14 @@ def full_volumes(lease_df, fc):
     return pd.concat([hist, future], ignore_index=True)
 
 
+def forecast_volumes(fc, gor):
+    """Volumes for a well with no history: forecast oil, gas = oil × GOR (MCF/bbl)."""
+    vol = fc[["date", "oil_bbl"]].copy()
+    vol["gas_mcf"] = vol["oil_bbl"] * gor
+    vol["actual"] = False
+    return vol
+
+
 def priced_wti(volumes, wti, flat_price):
     """WTI per month: historical price for past months, flat price for the forecast."""
     hist = volumes[["date"]].merge(wti, on="date", how="left")["wti"]

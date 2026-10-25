@@ -39,8 +39,9 @@ Architecture decisions:
 
 ## Layout and running
 
-- `production/rrc.py`: PDQ fetcher (`PDQSession`, replays the website's session flow; PDQ has no API) and `load_production` (cleans "NO RPT" to missing, adds BOPD).
-- `production/decline.py`: Arps fits (robust soft-L1 loss on log rate), modified hyperbolic forecast, EUR.
+- The LAS log is the primary input; production data is optional. Without it, EUR = OOIP × assumed RF via `decline.type_curve`; with it, an Arps fit to actual production, and RF becomes a cross-check.
+- `production/rrc.py`: PDQ fetchers (PDQ has no API, so they replay the website's form flow): `fetch_lease` (any oil lease by number + district, used by the dashboard) and `PDQSession` (field-based, used by `fetch_data.py`). `clean_production` turns "NO RPT" into missing, drops trailing unreported months, adds BOPD.
+- `production/decline.py`: Arps fits (robust soft-L1 loss on log rate), modified hyperbolic forecast, EUR, `type_curve` for wells with no history.
 - `production/economics.py`: monthly DCF, IRR, breakeven, WTI loader.
 - `production/appraisal.py`: history + forecast volumes, recovery factor check.
 - `app.py`: Streamlit dashboard. `fetch_data.py`: refreshes `data/`.
