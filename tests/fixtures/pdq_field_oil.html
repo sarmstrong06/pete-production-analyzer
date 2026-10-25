@@ -1,0 +1,1048 @@
+
+
+
+
+
+
+
+
+
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="styles/ogm_style3.css">
+    <!--<script defer type="text/javascript" src="../js/pngfix.js"></script>-->
+    <title>Lease Query Results</title>
+</head>
+<body>
+<!-- System Header -->
+
+
+
+
+
+
+
+
+
+<!--Main System Header-->
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+<script>
+function validateHeader(){
+if(document.forms["HeaderForm"].elements["go"].selectedIndex ==0)
+   {
+   	return false;
+   }else{
+   	return true;
+   }
+}
+</script>
+  <form name="HeaderForm" action="/WFC/submitHeaderAction.do">
+  <tr>
+      <td class="MainHeader"><img src="/PDQ/images/rrc_online_trans_new.gif" height="35" width="334" border="0" alt=""></td>
+      <td align="right" nowrap class="MainHeader">
+      <input type="hidden" name="ogmid" value="KbqFJRcI98YXtIjkxCAhYznlDr6hy2v3MXNRZP2787I=">
+<!--
+      <select name="go" class="SysMenu"><option value="" selected="selected">Choose an Application</option>
+-->
+          <!--<optgroup label="First Group">-->
+
+	
+<!--      <option value="/PDQ/pdqHomeAction.do">Production Data Query</option> -->
+
+<!--      <option value="/WFC/homePageAction.do?action=homePage">RRC Interactive Home</option> -->
+      <!--</optgroup>-->
+<!-- </select> -->
+
+<!--	<input type="submit" name="submit" value="Go" class="SysMenu" onClick="return validateHeader()"> -->
+	
+<!--	<input type="submit" name="submit" value="Log In" class="SysMenu">    -->
+	
+	
+      </td>
+      <td class="MainHeader"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+    </tr>
+    </form>
+  <tr>
+    <td colspan="3" class="BorderLines"><img src="/PDQ/images/spacer.gif" height="3" width="1" alt=""></td>
+  </tr>
+</table>
+
+<!--Application Header-->
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+  <tr>
+    <td height="26" class="AppHeader"><img src="/PDQ/images/spacer.gif" height="1" width="4" alt=""></td>
+    <td width="100%" class="AppHeader">
+Oil &amp; Gas Production Data Query
+</td>
+  </tr>
+</table>
+
+<!-- Top Nav Level 2 -->
+<!--Navigation Table Level 2 and 3-->
+<table width="100%" border="0" cellpadding="0" cellspacing="0">
+  <tr>
+    <td  colspan="2" class="BorderLines"><img src="/PDQ/images/spacer.gif" height="2" width="1" alt=""></td>
+  </tr>
+
+
+
+<!--Level 2 navigation row-->
+  <tr>
+    <td class="AppNavMain" width="1%"><img src="/PDQ/images/spacer.gif" height="1" width="10" alt=""></td>
+    <td class="AppNavMain">
+      <table border="0" cellpadding="0" cellspacing="0">
+        <tr>
+          
+          
+          
+          
+          <td class="AppNavMainSelected"><a href="/PDQ/home.do">Production Data&nbsp;</a></td>
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+           
+          <td class="AppNavMain"><a href="#" onclick="hold=window.open('http://www.rrc.state.tx.us/about-us/resource-center/faqs/', 'popupWindow','menubar=yes,resizable=yes,scrollbars=yes,width=500,height=400,x=1,y=1,screenx=1,screeny=1');hold.focus();return false;">FAQs&nbsp;</a></td>
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+          
+          <td class="AppNavMain">
+	  
+	  
+	  
+	  
+		<a href="#" onclick="hold=window.open('/PDQ/help/prod_results_howto.html','popupWindow','menubar=yes,resizable=yes,scrollbars=yes,width=500,height=400,x=1,y=1,screenx=1,screeny=1');hold.focus();return false;">PDQ Help&nbsp;</a></td>
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+	  
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td  colspan="2" class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+  </tr>
+
+<!--Level 3 navigation row-->
+
+
+  <tr>
+    <td class="AppNavSecondary"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+    <td class="AppNavSecondary">
+      <table border="0" cellpadding="0" cellspacing="0">
+      
+        <tr>
+          
+          
+          
+          <td align="center" class="AppNavSecondarySelected"><a href="/PDQ/generalReportAction.do">General Production Query&nbsp;</a></td>
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+          
+          <td align="center" class="AppNavSecondary"><a href="/PDQ/quickLeaseReportBuilderAction.do">Specific Lease Query&nbsp;</a></td>
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+
+</table>
+
+
+<!-- Banner Area -->
+ 
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table width="99%" border="0" align="center" cellpadding="8" cellspacing="0">
+  <tr>
+    <td>
+    
+    <h2>General Production Query Results </h2>
+    
+    
+<table width="120" border="0" align="right" cellpadding="2" cellspacing="0" class="SideBox">
+        <tr>
+          <th><div align="center"><strong>Related Links</strong></div>
+          </th>
+        </tr>
+        <tr>
+          <td nowrap><a href="#" onclick="hold=window.open('http://www.rrc.state.tx.us/oil-gas/research-and-statistics/operator-information/oil-gas-directory-operator-contact-information/', 'popupWindow','menubar=yes,resizable=yes,scrollbars=yes,width=500,height=400,x=1,y=1,screenx=1,screeny=1');hold.focus();return false;">O&amp;G Directory</a></td>
+        </tr>
+        <tr>
+          <td nowrap><a href="#" onclick="hold=window.open('http://www.rrc.state.tx.us/oil-gas/research-and-statistics/production-data/', 'popupWindow','menubar=yes,resizable=yes,scrollbars=yes,width=500,height=400,x=1,y=1,screenx=1,screeny=1');hold.focus();return false;">O&amp;G Proration Schedule</a></td>
+        </tr>
+	<tr>
+          <td nowrap>
+           <!-- CQ23013 -->
+            <a target="_blank" href="http://www.rrc.state.tx.us/media/8992/cty_coast_offshore.pdf">
+                 Offshore County Map
+            </a>
+          </td>
+        </tr>
+      </table>
+
+        <table border="0" cellpadding="4" cellspacing="0" class="GroupBox1">
+            <tr>
+              <td align="left"><strong>Query Path:&nbsp;</strong></td>
+              <td >
+              <a href="./generalReportAction.do"/>Search&nbsp;Criteria</a>&nbsp;&gt; Field SPRABERRY (TREND AREA)
+              </td>
+            </tr>
+            <tr>
+              <td align="left"><strong>Date Range:</strong></td>
+                 <form name="DateRangeForm" method="POST" action="/PDQ/changePeriodAction.do">
+              <td>
+                 <select name="startMonth"><option value="01" selected="selected">Jan</option>
+<option value="02">Feb</option>
+<option value="03">Mar</option>
+<option value="04">Apr</option>
+<option value="05">May</option>
+<option value="06">Jun</option>
+<option value="07">Jul</option>
+<option value="08">Aug</option>
+<option value="09">Sep</option>
+<option value="10">Oct</option>
+<option value="11">Nov</option>
+<option value="12">Dec</option></select>
+              <select name="startYear"><option value="1993">1993</option>
+<option value="1994">1994</option>
+<option value="1995">1995</option>
+<option value="1996">1996</option>
+<option value="1997">1997</option>
+<option value="1998">1998</option>
+<option value="1999">1999</option>
+<option value="2000">2000</option>
+<option value="2001">2001</option>
+<option value="2002">2002</option>
+<option value="2003">2003</option>
+<option value="2004">2004</option>
+<option value="2005">2005</option>
+<option value="2006">2006</option>
+<option value="2007">2007</option>
+<option value="2008">2008</option>
+<option value="2009">2009</option>
+<option value="2010">2010</option>
+<option value="2011">2011</option>
+<option value="2012">2012</option>
+<option value="2013">2013</option>
+<option value="2014">2014</option>
+<option value="2015">2015</option>
+<option value="2016">2016</option>
+<option value="2017">2017</option>
+<option value="2018">2018</option>
+<option value="2019">2019</option>
+<option value="2020">2020</option>
+<option value="2021">2021</option>
+<option value="2022">2022</option>
+<option value="2023">2023</option>
+<option value="2024" selected="selected">2024</option>
+<option value="2025">2025</option>
+<option value="2026">2026</option></select>
+              <strong>to</strong>
+              <select name="endMonth"><option value="01">Jan</option>
+<option value="02">Feb</option>
+<option value="03">Mar</option>
+<option value="04">Apr</option>
+<option value="05">May</option>
+<option value="06" selected="selected">Jun</option>
+<option value="07">Jul</option>
+<option value="08">Aug</option>
+<option value="09">Sep</option>
+<option value="10">Oct</option>
+<option value="11">Nov</option>
+<option value="12">Dec</option></select>
+              <select name="endYear"><option value="1993">1993</option>
+<option value="1994">1994</option>
+<option value="1995">1995</option>
+<option value="1996">1996</option>
+<option value="1997">1997</option>
+<option value="1998">1998</option>
+<option value="1999">1999</option>
+<option value="2000">2000</option>
+<option value="2001">2001</option>
+<option value="2002">2002</option>
+<option value="2003">2003</option>
+<option value="2004">2004</option>
+<option value="2005">2005</option>
+<option value="2006">2006</option>
+<option value="2007">2007</option>
+<option value="2008">2008</option>
+<option value="2009">2009</option>
+<option value="2010">2010</option>
+<option value="2011">2011</option>
+<option value="2012">2012</option>
+<option value="2013">2013</option>
+<option value="2014">2014</option>
+<option value="2015">2015</option>
+<option value="2016">2016</option>
+<option value="2017">2017</option>
+<option value="2018">2018</option>
+<option value="2019">2019</option>
+<option value="2020">2020</option>
+<option value="2021">2021</option>
+<option value="2022">2022</option>
+<option value="2023">2023</option>
+<option value="2024" selected="selected">2024</option>
+<option value="2025">2025</option>
+<option value="2026">2026</option></select>
+              <input type="submit" name="submit" value="Submit" onclick="return validateDateRange();">
+              </td>
+            </tr>
+           </form>
+        </table>
+</tr>
+</table>
+ 
+<script language="Javascript1.1" src="staticJavascript.jsp"></script>
+
+
+<!-- Content Area -->
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+  <tr valign="top">
+    <td width="11" class="ContentArea"><img src="/PDQ/images/spacer.gif" height="1" width="11" alt=""></td>
+    <td class="ContentArea" width="1" ><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+    <td width="100%" class="ContentArea">
+        
+
+
+
+
+<!-- /tiles/messages.jsp BEGIN -->
+
+
+
+
+<!-- /tiles/messages.jsp END -->
+
+        <!-- View Type Menu Area -->
+        
+            
+            
+                
+
+
+
+
+
+
+
+
+
+
+
+    
+         
+    
+    
+         
+         
+         
+         
+         
+               
+          
+         
+    
+    
+    
+    
+          
+               
+         
+          
+
+
+
+
+
+
+
+
+
+<!--Level 4 navigation row-->
+
+<table border=0 cellpadding=0 cellspacing=0>
+        <tr valign="top">
+          <td>View by: </td>
+
+           
+           <td nowrap class="Tab"><a href="/PDQ/changeViewReportAction.do?viewType=Monthly Totals">Monthly Totals</a></td>
+           
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+
+           
+          <td nowrap class="Tab"><a href="/PDQ/changeViewReportAction.do?viewType=Annual Totals">Annual Totals</a></td>
+          
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+
+          
+           
+          <td nowrap class="Tab"><a href="/PDQ/changeViewReportAction.do?viewType=County">County</a></td>
+          
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+
+           
+           
+          <td nowrap class="Tab"><a href="/PDQ/changeViewReportAction.do?viewType=Field">Field</a></td>
+           
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+
+           
+           
+          <td nowrap class="Tab"><a href="/PDQ/changeViewReportAction.do?viewType=Operator">Operator</a></td>
+           
+          <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+          
+
+           
+           
+           
+           
+          <td nowrap class="TabSelected"><a href="/PDQ/changeViewReportAction.do?viewType=Lease">Lease</a></td>
+           
+           <td class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+           
+
+          
+           
+          <td nowrap class="Tab"><a href="/PDQ/changeViewReportAction.do?viewType=District">District</a></td>
+           
+           
+        </tr>
+</table>
+            
+        <table border="0" cellpadding="4" cellspacing="0" class="TabBox2">
+        <tr>
+        <td>
+
+            
+
+
+
+
+
+
+
+
+
+
+<p><STRONG>Field SPRABERRY (TREND AREA)</STRONG><BR>Lease, Jan 2024 - Jun 2024
+</p>
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+         
+    
+
+
+<form name="MainReportForm" method="POST" action="/PDQ/getPageNumberAction.do" onsubmit="return validateReport (622);">
+<center>
+
+<!-- add View All Results to the top of the page, defect orcl100004328 -->
+
+
+  <input type="hidden" name="offset" value="">
+              <TABLE BORDER=1 CELLPADDING=2 CELLSPACING=0 bordercolor="#666666" class="DataGrid">
+              <TR>
+                <TH>Lease name</TH>
+                <TH>Lease No.</TH>
+                
+                <TH>District No.</TH>
+                <TH>Oil
+                  (BBL)</TH>
+                <TH>Casinghead
+                  (MCF)</TH>
+               
+               
+                
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=%2BCHRISTIAN%2B47&amp;number=38696&amp;districtNo=10&amp;gasWellNumber=">CHRISTIAN 47</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   38696
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=%2527M%2527%2BFEE-POWELL%2BUNIT&amp;number=53036&amp;districtNo=10&amp;gasWellNumber=">&#39;M&#39; FEE-POWELL UNIT</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   53036
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   334
+              </TD><TD ALIGN=right>
+                   850
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=%2527SV%2527%2BNO%2BMO&amp;number=47294&amp;districtNo=10&amp;gasWellNumber=">&#39;SV&#39; NO MO</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   47294
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   1,265
+              </TD><TD ALIGN=right>
+                   2,525
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=1%2BMILE%2B29%2BG&amp;number=56198&amp;districtNo=10&amp;gasWellNumber=">1 MILE 29 G</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   56198
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   9,418
+              </TD><TD ALIGN=right>
+                   34,492
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=115%2BSWD&amp;number=42306&amp;districtNo=10&amp;gasWellNumber=">115 SWD</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   42306
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=137%2BBRINE&amp;number=55581&amp;districtNo=10&amp;gasWellNumber=">137 BRINE</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   55581
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=137%2BBRINE%2BWELL%2B2&amp;number=47281&amp;districtNo=10&amp;gasWellNumber=">137 BRINE WELL 2</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   47281
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=137%2BSWD&amp;number=46787&amp;districtNo=10&amp;gasWellNumber=">137 SWD</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   46787
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=1379%2BBRINE&amp;number=51114&amp;districtNo=10&amp;gasWellNumber=">1379 BRINE</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   51114
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=176%2BBRINE&amp;number=47517&amp;districtNo=10&amp;gasWellNumber=">176 BRINE</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   47517
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=1788%2BSWD&amp;number=42046&amp;districtNo=10&amp;gasWellNumber=">1788 SWD</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   42046
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=21202%2BVECTOR%2B19&amp;number=44984&amp;districtNo=10&amp;gasWellNumber=">21202 VECTOR 19</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   44984
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   601
+              </TD><TD ALIGN=right>
+                   4,647
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=21202%2BVECTOR%2B19%2BA&amp;number=43535&amp;districtNo=10&amp;gasWellNumber=">21202 VECTOR 19 A</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   43535
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   255
+              </TD><TD ALIGN=right>
+                   444
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=21202%2BVECTOR%2B19%2BB&amp;number=44333&amp;districtNo=10&amp;gasWellNumber=">21202 VECTOR 19 B</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   44333
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   207
+              </TD><TD ALIGN=right>
+                   7,429
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=21202%2BVECTOR%2B30&amp;number=44962&amp;districtNo=10&amp;gasWellNumber=">21202 VECTOR 30</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   44962
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   758
+              </TD><TD ALIGN=right>
+                   1,536
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=3033%2BSWD&amp;number=40825&amp;districtNo=10&amp;gasWellNumber=">3033 SWD</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   40825
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=3601%2BSWD&amp;number=51824&amp;districtNo=10&amp;gasWellNumber=">3601 SWD</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   51824
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=44%2BMAGNUM%2B9-4&amp;number=56349&amp;districtNo=10&amp;gasWellNumber=">44 MAGNUM 9-4</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   56349
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   108,016
+              </TD><TD ALIGN=right>
+                   416,855
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=715%2BSWD&amp;number=50071&amp;districtNo=10&amp;gasWellNumber=">715 SWD</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   50071
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   0
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+               
+              <TR><TD ALIGN=left>
+                   
+                   <a href="/PDQ/drillDownAction.do?ogCode=O&amp;name=7904%2BJV-P%2BHILLGER%2B%2522D%2522&amp;number=52595&amp;districtNo=10&amp;gasWellNumber=">7904 JV-P HILLGER &quot;D&quot;</a>
+                   
+                   
+              </TD><TD ALIGN=center>
+                   52595
+              </TD>
+              
+              <TD ALIGN=center>
+                   08
+              </TD>
+              <TD ALIGN=right>
+                   185
+              </TD><TD ALIGN=right>
+                   0
+              </TD>
+              
+              
+              
+              </TR>
+              
+            </TABLE>
+    <br>
+
+  
+  
+  
+    
+     
+      <a href="/PDQ/changePageViewAction.do?pager.offset=20">[ Next &gt ]</a>
+    &nbsp;
+    | &nbsp;Page:&nbsp;
+    
+      <b>1</b>
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=20">2</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=40">3</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=60">4</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=80">5</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=100">6</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=120">7</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=140">8</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=160">9</a>
+      
+    
+      
+      <a href="/PDQ/changePageViewAction.do?pager.offset=180">10</a>
+      
+    
+&nbsp;of&nbsp
+       <a href="/PDQ/changePageViewAction.do?pager.offset=12420">622</a>
+    &nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;Go to Page <input type="text" name="pageNumber" size="8" value="">&nbsp;&nbsp;
+ <input type="submit" name="submit" value="Submit">
+    
+
+
+
+
+<br>
+</center></form>
+
+
+
+
+<script language="Javascript1.1" src="staticJavascript.jsp"></script>
+
+        </td>
+        </tr>
+        </table>
+        
+        
+    </td>
+  <tr>
+    <td colspan="3" class="BorderLines"><img src="/PDQ/images/spacer.gif" height="1" width="1" alt=""></td>
+  </tr>
+  </tr>
+</table>
+<!-- footer -->
+
+
+
+
+
+
+
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+  <tr>
+     <td  height="18" align="center" class="MainFooter">
+        <a target="_blank" href="http://www.rrc.state.tx.us/site-policies/railroad-commission-of-texas-site-policies/">Disclaimer</a> |
+        <a target="_blank" href="/PDQ/footer/IO_home.html">RRC Interactive Home</a>  | <a target="_blank" href="http://www.rrc.state.tx.us">RRC Home</a> |
+	<a href="#" onclick="hold=window.open('/PDQ/footer/IO_Contacts.html','popupWindow','resizable=yes,menubar=yes,scrollbars=yes,width=500,height=400,x=1,y=1,screenx=1,screeny=1');hold.focus();return false;">Contact</a>
+     </td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+</body>
+</html>

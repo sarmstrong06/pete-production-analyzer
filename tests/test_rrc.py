@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from production.rrc import (_rows, clean_production, lease_kind, normalize_api,
+from production.rrc import (_rows, clean_production, lease_kind, normalize_api, parse_field_leases,
                             parse_lease_page, parse_wellbore_results)
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -72,6 +72,17 @@ def test_parse_wellbore_results():
         "field_no": "85280300", "operator": "OVINTIV USA INC.", "county": "HOWARD",
     }
     assert rows[1]["well_no"] == "5HK"
+
+
+def test_parse_field_lease_lists():
+    oil = parse_field_leases((FIXTURES / "pdq_field_oil.html").read_text())
+    assert len(oil) == 20
+    assert oil[1] == {"name": "'M' FEE-POWELL UNIT", "lease_no": "53036", "district": "08", "kind": "Oil",
+                      "oil": 334.0, "gas": 850.0}
+    gas = parse_field_leases((FIXTURES / "pdq_field_gas.html").read_text())
+    assert len(gas) == 20
+    assert gas[1] == {"name": "1ST BAPTIST CHURCH", "lease_no": "252679", "district": "09", "kind": "Gas",
+                      "oil": 0.0, "gas": 29201.0}
 
 
 def test_parse_gas_well_page():

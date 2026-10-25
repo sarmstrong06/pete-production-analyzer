@@ -34,18 +34,25 @@ def _rows(page_html):
 class PDQSession:
     """One search session on the PDQ website for a single field."""
 
-    def __init__(self, field_no, field_name, start="2015-01", end="2026-06", pause=0.5):
+    def __init__(self, field_no, field_name=None, start="2015-01", end="2026-06", pause=0.5, kind="Oil"):
+        """field_name is looked up from field_no when not given. kind: "Oil" or "Gas"."""
         self.s = requests.Session()
         self.s.headers["User-Agent"] = "Mozilla/5.0 (PETE Production Analyzer)"
         self.pause = pause  # be polite to a public server
+        self.kind = kind
 
         r = self._get("/PDQ/generalReportAction.do")
         sid = re.search(r"jsessionid=([^\"?&;]+)", r.text).group(1)
         url = lambda p: f"{BASE}/PDQ/{p};jsessionid={sid}"
 
         self.s.post(url("mainReportAction.do"), data={"viewType": "Lease", "submit": "Search For Field"})
-        self.s.post(url("fieldSearchAction.do"), data={
+        r = self.s.post(url("fieldSearchAction.do"), data={
             "fieldSearchCriteria": "exactMatch", "fieldSearchValue": field_no, "submit": "Search"})
+        if field_name is None:
+            found = re.search(rf'value="{re.escape(str(field_no))}\^([^"]+)"', unescape(r.text))
+            if not found:
+                raise ValueError(f"No field {field_no} found on PDQ.")
+            field_name = found.group(1)
         r = self.s.post(url("fieldSelectAction.do"), data={
             "selectedFieldValue": f"{field_no}^{field_name}", "submit": "Submit"})
 
@@ -53,7 +60,7 @@ class PDQSession:
         hidden = dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', r.text))
         (sy, sm), (ey, em) = start.split("-"), end.split("-")
         r = self.s.post(BASE + action, data={
-            **hidden, "viewType": "Lease", "wellType": "Oil",
+            **hidden, "viewType": "Lease", "wellType": kind,
             "startMonth": sm, "startYear": sy, "endMonth": em, "endYear": ey,
             "district": "None Selected", "onShoreCounty": "None Selected",
             "offShoreArea": "None Selected", "fieldNameData": field_name,
@@ -68,6 +75,13 @@ class PDQSession:
     def _get(self, path, **params):
         time.sleep(self.pause)
         return self.s.get(BASE + path, params=params)
+
+    def field_leases(self, pagesize=10000):
+        """Leases (oil) or gas wells in the field with their volumes over the
+        search's date range: dicts of name, lease_no (str), district, oil, gas.
+        PDQ lists at most `pagesize` rows, alphabetically."""
+        page = self._get("/PDQ/changePageViewAction.do", pagesize=str(pagesize)).text
+        return parse_field_leases(page)
 
     def lease_monthly(self, lease_no, lease_name, district_code="10"):
         """Monthly oil and casinghead gas for one oil lease, as raw text cells.
@@ -95,6 +109,31 @@ class PDQSession:
                     "operator": c[5] if len(c) > 5 else "",
                 })
         return records
+
+
+def parse_field_leases(page_html):
+    """Rows of a PDQ field lease list, oil or gas: dicts of name, lease_no (str),
+    district (RRC name, e.g. "08"), kind, and the row's two volumes: oil and gas
+    (for gas wells, gas well gas and condensate).
+
+    Oil rows read: name, lease no, district, oil, casinghead gas. Gas rows read:
+    name, gas well ID, well no, gas, condensate. Both carry a drill-down link
+    with the internal district code, which is used for the district.
+    """
+    code_to_district = {v: k for k, v in DISTRICT_CODES.items()}
+    num = lambda x: float(x.replace(",", "")) if re.fullmatch(r"[\d,]+", x) else 0.0
+    out = []
+    for row in re.findall(r"<tr[^>]*>((?:(?!<tr).)*?)</tr>", page_html, flags=re.S | re.I):
+        link = re.search(r"drillDownAction\.do\?ogCode=(\w)&(?:amp;)?name=[^&]*&(?:amp;)?number=(\d+)"
+                         r"&(?:amp;)?districtNo=(\w+)", row)
+        c = _cells(row)
+        if not link or len(c) < 5 or link.group(3) not in code_to_district:
+            continue
+        kind = "Oil" if link.group(1) == "O" else "Gas"
+        oil, gas = (num(c[3]), num(c[4])) if kind == "Oil" else (num(c[4]), num(c[3]))
+        out.append({"name": c[0], "lease_no": link.group(2), "district": code_to_district[link.group(3)],
+                    "kind": kind, "oil": oil, "gas": gas})
+    return out
 
 
 # PDQ's internal district codes (what the website's form sends) by RRC district name

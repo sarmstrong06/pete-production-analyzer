@@ -28,6 +28,7 @@ from welllog.petrophysics import archie_sw, density_porosity, pay_flag, shale_vo
 from welllog.volumetrics import net_pay_summary, ogip, ooip
 
 from production import kgs
+from production.typecurve import build_type_curve, fetch_field_wells
 from production.appraisal import (PRODUCTS, forecast_volumes, full_volumes, priced_history,
                                   recovery_factor_check, secondary_ratio)
 from production.decline import (MODELS, eur, fit_arps, forecast,
@@ -104,6 +105,8 @@ UNITS = {
 # Appraisal modes (sidebar step 3) and where a lease comes from (step 4)
 TYPICAL = "Prospect: typical assumptions"
 ANALOG = "Prospect: decline from an analog well"
+FIELD = "Prospect: field type curve"
+TC_EXAMPLE, TC_RRC = "Example field (bundled)", "Any Texas field (RRC)"
 OWN = "Producing well: its own production"
 EXAMPLE, BY_API, BY_LEASE = "Example well", "Find by API number", "Enter RRC lease / gas well ID"
 MODE_HELP = {
@@ -111,6 +114,8 @@ MODE_HELP = {
              "decline shape for the well type.",
     ANALOG: "A similar nearby well's production sets the decline shape and the ratio of the "
             "other stream. Your log still sets the size: volume in place × recovery factor.",
+    FIELD: "Many wells in the same field set a typical decline (the P50 type curve), so one odd "
+           "neighbor can't skew it. Your log still sets the size.",
     OWN: "This well's own production history sets the forecast. The recovery factor "
          "(EUR ÷ volume in place) becomes a cross-check between the log and the production.",
 }
@@ -203,6 +208,17 @@ def api_target(text):
     return ("TX", api8) if api8 else None
 
 
+@st.cache_data(ttl=86400, show_spinner="Fetching the field's wells from the Railroad Commission "
+                                       "(about a second per well)...")
+def field_cached(field_no, kind, n):
+    return fetch_field_wells(field_no, kind, n=n)
+
+
+@st.cache_data(show_spinner="Building the type curve...")
+def typecurve_cached(wells, product, q_limit):
+    return build_type_curve(wells, product, q_limit=q_limit)
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def well_count(lease_no, district, kind):
     try:
@@ -272,12 +288,50 @@ with st.sidebar:
     st.caption(wt["note"] + " Sets starting assumptions; all are editable.")
 
     st.header("3 · Appraisal mode")
-    mode = st.radio("Appraisal mode", [TYPICAL, ANALOG, OWN], label_visibility="collapsed")
+    mode = st.radio("Appraisal mode", [TYPICAL, ANALOG, FIELD, OWN], label_visibility="collapsed")
     st.caption(MODE_HELP[mode])
 
     lease, lease_label, n_wells = None, "", 1
-    prod_source = None
-    if mode != TYPICAL:
+    prod_source, tc, tc_label = None, None, ""
+    if mode == FIELD:
+        st.header("4 · Field wells")
+        tc_source = st.radio("Type curve wells", [TC_EXAMPLE, TC_RRC], label_visibility="collapsed")
+        if tc_source == TC_EXAMPLE:
+            field_wells = examples[product]
+            tc_label = ("Spraberry (Trend Area), 8 leases" if product == "oil"
+                        else "Newark, East (Barnett Shale), 8 wells")
+        else:
+            with st.form("field_form"):
+                c1, c2 = st.columns([3, 2])
+                field_in = c1.text_input("RRC field number", placeholder="e.g. 85280300",
+                                         help="On the RRC lease or well record. 85280300 is Spraberry (Trend "
+                                              "Area); 65280200 is Newark, East (Barnett Shale).")
+                n_tc = c2.number_input("Wells", min_value=5, max_value=40, value=15, step=5)
+                submitted = st.form_submit_button("Build type curve", width="stretch")
+            if submitted:
+                if field_in.strip().isdigit():
+                    st.session_state["field_query"] = (field_in.strip(), int(n_tc))
+                else:
+                    st.error("The field number must be digits only.")
+            field_wells = None
+            if "field_query" in st.session_state:
+                f_no, f_n = st.session_state["field_query"]
+                try:
+                    field_wells, f_name = field_cached(f_no, kind, f_n)
+                    tc_label = f"{f_name.title()} (field {f_no}), {field_wells['lease_no'].nunique()} wells"
+                except ValueError as e:
+                    st.error(str(e))
+                except Exception as e:
+                    st.error(f"Couldn't reach the Railroad Commission: {e}")
+            st.caption("Samples recent wells still producing in the field, skipping disposal and brine "
+                       "wells; each needs 24+ months after its peak. Takes about a second per well.")
+        if field_wells is not None:
+            try:
+                tc = typecurve_cached(field_wells, product, wt["q_limit"])
+                st.caption(f"{tc_label} · profile through month {int(tc.profile['t'].max())}")
+            except ValueError as e:
+                st.error(str(e))
+    if mode in (ANALOG, OWN):
         st.header("4 · " + ("Analog well" if mode == ANALOG else "This well's production"))
         sources = [EXAMPLE, BY_API, BY_LEASE]
         # A producing well's own log usually carries its API number: look that up first
@@ -402,6 +456,7 @@ with st.sidebar:
 
 has_prod = mode == OWN and lease is not None      # forecast from this well's own history
 use_analog = mode == ANALOG and lease is not None  # decline shape borrowed from another well
+use_tc = mode == FIELD and tc is not None          # decline shape from a field type curve
 
 summary_tab, log_tab, vol_tab, fc_tab, econ_tab = st.tabs(
     ["Summary", "1 · Well log", "2 · Volumetrics", "3 · Production forecast", "4 · Economics"])
@@ -606,6 +661,23 @@ with fc_tab:
             m[2].metric("Analog b-factor", f"{analog_fit.b:.2f}")
             m[3].metric("Analog first-year decline", f"{analog_fit.di_annual_eff:.0%}")
             warn_if_poor_fit(analog_fit, "The analog's")
+        elif use_tc:
+            p50 = tc.fits["P50"]
+            b_default = float(np.clip(round(p50.b, 2), 0.0, 2.0))
+            deff_default = float(np.clip(round(p50.di_annual_eff * 100), 1, 99))
+            key_sfx = f"{well_type}_tc_{tc_label}"
+            st.markdown(f"**Forecast from the log, shaped like the field's P50 type curve** ({tc_label}): "
+                        f"your {U['in_place'].lower()} × recovery factor sets how much; the typical well "
+                        "in the field sets how fast.")
+            q = tc.eurs.quantile([0.1, 0.5, 0.9])
+            m = st.columns(4)
+            m[0].metric("Wells in type curve", f"{tc.n_wells}")
+            m[1].metric("Field well EUR, P50", volume(q[0.5], product),
+                        help=f"Each well's own decline fit. P90-P10 range: {volume(q[0.1], product)} - "
+                             f"{volume(q[0.9], product)}.")
+            m[2].metric("P50 b-factor", f"{p50.b:.2f}")
+            m[3].metric("P50 first-year decline", f"{p50.di_annual_eff:.0%}")
+            warn_if_poor_fit(p50, "The P50 type curve's")
         else:
             st.markdown(f"**Forecast from the log** (no production data): EUR = {U['in_place'].lower()} × "
                         "recovery factor, spread over time with a typical decline shape for the well type.")
@@ -615,7 +687,8 @@ with fc_tab:
                                           "uncertainty in a log-only appraisal. An analog can't supply "
                                           "this without its own log.") / 100
         first_prod = c1.date_input("First production", value=(pd.Timestamp.today() + pd.offsets.MonthBegin(1)).date())
-        shape_src = "from the analog's fit" if use_analog else "typical for the well type"
+        shape_src = ("from the analog's fit" if use_analog else "from the field's P50 type curve" if use_tc
+                     else "typical for the well type")
         b = c2.number_input("b-factor", value=b_default, step=0.1, min_value=0.0, max_value=2.0,
                             key=f"b_{key_sfx}", help=f"Shape of the decline; {shape_src}.")
         d_eff = c2.number_input("First-year decline (%)", value=deff_default, step=5.0, min_value=1.0,
@@ -655,15 +728,31 @@ with fc_tab:
                 fig.add_trace(go.Scatter(x=t_a, y=analog_fit.rate(t_a, nominal_from_effective_annual(d_term)),
                                          mode="lines", name="Analog fit", line=dict(color=BLUE, width=2, dash="dot"),
                                          hovertemplate=hover))
+            if use_tc:
+                for i, (well_id, s) in enumerate(tc.curves.items()):
+                    s = s.dropna()
+                    fig.add_trace(go.Scatter(x=s.index, y=s.values, mode="lines", line=dict(color=MUTED, width=1),
+                                             opacity=0.35, name="Field wells", legendgroup="wells",
+                                             showlegend=i == 0, hovertemplate=f"{tc.names.get(well_id, well_id)}"
+                                             f"<br>{hover}"))
+                prof = tc.profile
+                for col, name, dash, width in [("p10", "P10 (high)", "dash", 2), ("p50", "P50 type curve", None, 3),
+                                               ("p90", "P90 (low)", "dash", 2)]:
+                    fig.add_trace(go.Scatter(x=prof["t"], y=prof[col], mode="lines", name=name,
+                                             line=dict(color=BLUE, width=width, dash=dash), hovertemplate=hover))
             fig.add_trace(go.Scatter(x=fc["t"], y=fc["q"], mode="lines", name="Your well (forecast)",
                                      line=dict(color=ORANGE, width=3), hovertemplate=hover))
-            fig.update_xaxes(title_text="Months on production")
+            fig.update_xaxes(title_text="Months since peak" if use_tc else "Months on production")
             fig.update_yaxes(type="log", title_text=f"{product.capitalize()} rate ({rate_unit}, log scale)")
-            style(fig, height=440).update_layout(hovermode="closest", showlegend=use_analog)
+            style(fig, height=440).update_layout(hovermode="closest", showlegend=use_analog or use_tc)
             st.plotly_chart(fig, width="stretch")
             if use_analog:
                 st.caption("Same shape, different size: your forecast follows the analog's decline, "
                            f"scaled so it recovers your log's {U['in_place'].lower()} × recovery factor.")
+            elif use_tc:
+                st.caption("Gray: each field well, lined up at its peak month. Blue: the P10/P50/P90 rate at each "
+                           "month across those wells (P10 = high case). Your forecast follows the P50 shape, "
+                           f"scaled to your log's {U['in_place'].lower()} × recovery factor.")
         st.info("This forecast is only as good as its assumptions. If this well already produces, "
                 "switch to 'Producing well' mode to use its actual decline.", icon="ℹ️")
 
@@ -742,13 +831,16 @@ with econ_tab:
         if not has_prod:
             # A new well's whole life is being forecast, so use the analog's lifetime ratio
             # (an oil well's late-life GOR rises as reservoir pressure drops and would overstate gas)
-            ratio_default = secondary_ratio(lease, product, months=None) if use_analog else wt["ratio"]
+            ratio_default = (secondary_ratio(lease, product, months=None) if use_analog
+                             else tc.ratio if use_tc else wt["ratio"])
             ratio = c4.number_input(f"{U['other']} ({U['other_unit']})",
                                     value=float(round(ratio_default * U["other_scale"], 1)),
                                     step=U["other_step"], key=f"ratio_{key_sfx}",
                                     help=("Gas produced per barrel of oil" if product == "oil"
                                           else "Condensate produced per million cubic feet of gas")
-                                    + (" (analog's lifetime average)." if use_analog else ".")) / U["other_scale"]
+                                    + (" (analog's lifetime average)." if use_analog
+                                       else " (median of the field wells' lifetime averages)." if use_tc
+                                       else ".")) / U["other_scale"]
 
     rate_pct = f"{a.discount_rate:.0%}"
     if has_prod:
@@ -851,6 +943,7 @@ with summary_tab:
     st.caption(f"Log: {header.get('WELL', 'unnamed')} · {well_type} · "
                + (f"Producing well: {lease_label} · " if has_prod
                   else f"Prospect, decline from analog {lease_label} · " if use_analog
+                  else f"Prospect, field type curve: {tc_label} · " if use_tc
                   else "Prospect, typical assumptions · ") +
                f"{U['price']} ${main_now:,.2f} ({deck_text})")
 
@@ -871,7 +964,8 @@ with summary_tab:
             st.warning(f"**Cross-check: review.** {verdict}", icon="⚠️")
     else:
         m[3].metric("Recovery factor (assumed)", f"{rf_assumed:.0%}")
-        shape = f"the decline shape of analog {lease_label}" if use_analog else "a typical decline shape"
+        shape = (f"the decline shape of analog {lease_label}" if use_analog
+                 else f"the P50 type curve of {tc_label}" if use_tc else "a typical decline shape")
         st.info(f"EUR is {U['in_place'].lower()} × an assumed {rf_assumed:.0%} recovery factor, produced "
                 f"with {shape}. Once the well has its own production, switch to 'Producing well' mode "
                 "to test these assumptions against real performance.", icon="ℹ️")
