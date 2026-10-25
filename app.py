@@ -25,7 +25,7 @@ from welllog.petrophysics import archie_sw, density_porosity, pay_flag, shale_vo
 from welllog.volumetrics import net_pay_summary, ooip
 
 from production.appraisal import (forecast_volumes, full_volumes, priced_wti,
-                                  recovery_factor_check)
+                                  producing_gor, recovery_factor_check)
 from production.decline import (MODELS, eur, fit_arps, forecast,
                                 nominal_from_effective_annual, prepare_history, type_curve)
 from production.economics import (Assumptions, breakeven_oil_price, cash_flow,
@@ -61,7 +61,19 @@ WELL_TYPES = {
              "200 acres and recovers 3-15% of oil in place."),
 }
 
-NONE, EXAMPLE, FETCH = "None: estimate from the log", "Example Spraberry lease", "Fetch any Texas lease"
+# Appraisal modes (sidebar step 3) and where a lease comes from (step 4)
+TYPICAL = "Prospect: typical assumptions"
+ANALOG = "Prospect: decline from an analog well"
+OWN = "Producing well: its own production"
+EXAMPLE, FETCH = "Example Spraberry lease", "Fetch any Texas lease"
+MODE_HELP = {
+    TYPICAL: "No production data. EUR = oil in place × recovery factor, with a typical "
+             "decline shape for the well type.",
+    ANALOG: "A similar nearby well's production sets the decline shape and gas-oil ratio. "
+            "Your log still sets the size: oil in place × recovery factor.",
+    OWN: "This well's own production history sets the forecast. The recovery factor "
+         "(EUR ÷ oil in place) becomes a cross-check between the log and the production.",
+}
 
 st.set_page_config(page_title="Upstream Appraisal", page_icon="🛢️", layout="wide")
 
@@ -140,11 +152,16 @@ with st.sidebar:
     wt = WELL_TYPES[well_type]
     st.caption(wt["note"] + " Sets starting assumptions; all are editable.")
 
-    st.header("3 · Production data")
-    prod_source = st.radio("Production data", [NONE, EXAMPLE, FETCH], label_visibility="collapsed",
-                           help="Optional. Without it, the forecast comes from the log and "
-                                "analog assumptions. With it, from the well's actual decline.")
+    st.header("3 · Appraisal mode")
+    mode = st.radio("Appraisal mode", [TYPICAL, ANALOG, OWN], label_visibility="collapsed")
+    st.caption(MODE_HELP[mode])
+
     lease, lease_label = None, ""
+    if mode != TYPICAL:
+        st.header("4 · " + ("Analog lease" if mode == ANALOG else "This well's lease"))
+        prod_source = st.radio("Lease source", [EXAMPLE, FETCH], label_visibility="collapsed")
+    else:
+        prod_source = None
     if prod_source == EXAMPLE:
         leases = prod.groupby(["lease_no", "lease_name"]).size().reset_index().sort_values("lease_name")
         labels = [f"{r.lease_name} ({r.lease_no})" for r in leases.itertuples()]
@@ -179,13 +196,14 @@ with st.sidebar:
                    f"{op.iloc[-1] if len(op) else 'operator n/a'} · {producing_months} producing months")
         if producing_months < 6:
             st.warning("Fewer than 6 producing months: too little history to fit a decline. "
-                       "Estimating from the log instead.", icon="⚠️")
+                       "Using typical assumptions instead.", icon="⚠️")
             lease = None
-        else:
-            st.caption("PDQ lease data has no API numbers, so pair a log with the lease it was "
-                       "run in by hand for a meaningful cross-check.")
+        elif mode == OWN:
+            st.caption("PDQ lease data has no API numbers, so make sure this lease is the well "
+                       "the log was run in; otherwise the cross-check is meaningless.")
 
-has_prod = lease is not None
+has_prod = mode == OWN and lease is not None      # forecast from this well's own history
+use_analog = mode == ANALOG and lease is not None  # decline shape borrowed from another well
 
 summary_tab, log_tab, vol_tab, fc_tab, econ_tab = st.tabs(
     ["Summary", "1 · Well log", "2 · Volumetrics", "3 · Production forecast", "4 · Economics"])
@@ -339,18 +357,38 @@ with fc_tab:
                    "Zero and unreported months are left out.")
     else:
         model = "type curve"
-        st.markdown("**Forecast from the log** (no production data): "
-                    "EUR = oil in place × recovery factor, spread over time with an analog type curve.")
+        b_default, deff_default, key_sfx = wt["b"], wt["d_eff"], well_type
+        if use_analog:
+            # Borrow the analog's decline shape: fit it, then use its b and first-year decline
+            analog_hist = prepare_history(lease)
+            analog_fit = fit_arps(analog_hist, "hyperbolic")
+            analog_fc = forecast(analog_fit, analog_hist)
+            b_default = float(np.clip(round(analog_fit.b, 2), 0.0, 2.0))
+            deff_default = float(np.clip(round(analog_fit.di_annual_eff * 100), 1, 99))
+            key_sfx = f"{well_type}_{lease['lease_no'].iloc[0]}"  # new analog -> fresh defaults
+            st.markdown(f"**Forecast from the log, shaped like analog {lease_label}**: "
+                        "your oil in place × recovery factor sets how much; the analog's actual "
+                        "decline sets how fast.")
+            m = st.columns(4)
+            m[0].metric("Analog EUR", barrels(eur(lease, analog_fc)))
+            m[1].metric("Analog peak rate", f"{analog_hist['bopd'].iloc[0]:,.0f} bbl/day")
+            m[2].metric("Analog b-factor", f"{analog_fit.b:.2f}")
+            m[3].metric("Analog first-year decline", f"{analog_fit.di_annual_eff:.0%}")
+        else:
+            st.markdown("**Forecast from the log** (no production data): EUR = oil in place × "
+                        "recovery factor, spread over time with a typical decline shape for the well type.")
         c1, c2, c3 = st.columns(3)
         rf_assumed = c1.number_input("Recovery factor (%)", value=wt["rf"], step=1.0, key=f"rf_{well_type}",
                                      help="Share of oil in place the well will recover. The biggest "
-                                          "uncertainty in a log-only appraisal.") / 100
+                                          "uncertainty in a log-only appraisal. An analog can't supply "
+                                          "this without its own log.") / 100
         first_prod = c1.date_input("First production", value=(pd.Timestamp.today() + pd.offsets.MonthBegin(1)).date())
-        b = c2.number_input("b-factor", value=wt["b"], step=0.1, min_value=0.0, max_value=2.0,
-                            key=f"b_{well_type}", help="Shape of the decline; from analog wells.")
-        d_eff = c2.number_input("First-year decline (%)", value=wt["d_eff"], step=5.0, min_value=1.0,
-                                max_value=99.0, key=f"deff_{well_type}",
-                                help="How much the rate drops in year one; from analog wells.") / 100
+        shape_src = "from the analog's fit" if use_analog else "typical for the well type"
+        b = c2.number_input("b-factor", value=b_default, step=0.1, min_value=0.0, max_value=2.0,
+                            key=f"b_{key_sfx}", help=f"Shape of the decline; {shape_src}.")
+        d_eff = c2.number_input("First-year decline (%)", value=deff_default, step=5.0, min_value=1.0,
+                                max_value=99.0, key=f"deff_{key_sfx}",
+                                help=f"How much the rate drops in year one; {shape_src}.") / 100
         d_term = c3.number_input("Terminal decline (%/yr)", value=8.0, step=1.0) / 100
         q_limit = c3.number_input("Forecast cutoff (bbl/day)", value=wt["q_limit"], step=1.0,
                                   key=f"ql_{well_type}")
@@ -372,14 +410,29 @@ with fc_tab:
             st.warning("Oil in place × recovery factor is too small to produce above the forecast "
                        "cutoff rate at all.", icon="⚠️")
         else:
-            fig = go.Figure(go.Scatter(x=fc["date"], y=fc["bopd"], mode="lines", name="Type curve",
-                                       line=dict(color=ORANGE, width=2),
-                                       hovertemplate="%{x|%b %Y}: %{y:,.1f} bbl/day<extra></extra>"))
+            # Months on production, so a historical analog lines up with a future well
+            fig = go.Figure()
+            if use_analog:
+                fig.add_trace(go.Scatter(x=analog_hist["t"], y=analog_hist["bopd"], mode="markers",
+                                         name=f"Analog actual ({lease_label})",
+                                         marker=dict(color=BLUE, size=8, line=dict(color="white", width=1)),
+                                         hovertemplate="Month %{x}: %{y:,.0f} bbl/day<extra></extra>"))
+                t_a = np.arange(0, int(max(analog_fc["t"].max() if len(analog_fc) else 0, analog_hist["t"].max())) + 1)
+                fig.add_trace(go.Scatter(x=t_a, y=analog_fit.rate(t_a, nominal_from_effective_annual(d_term)),
+                                         mode="lines", name="Analog fit", line=dict(color=BLUE, width=2, dash="dot"),
+                                         hovertemplate="Month %{x}: %{y:,.0f} bbl/day<extra></extra>"))
+            fig.add_trace(go.Scatter(x=fc["t"], y=fc["bopd"], mode="lines", name="Your well (forecast)",
+                                     line=dict(color=ORANGE, width=3),
+                                     hovertemplate="Month %{x}: %{y:,.1f} bbl/day<extra></extra>"))
+            fig.update_xaxes(title_text="Months on production")
             fig.update_yaxes(type="log", title_text="Oil rate (bbl/day, log scale)")
-            style(fig, height=420).update_layout(hovermode="closest")
+            style(fig, height=440).update_layout(hovermode="closest", showlegend=use_analog)
             st.plotly_chart(fig, width="stretch")
-        st.info("This forecast is only as good as its assumptions. Add production data from the "
-                "sidebar to replace them with the well's actual decline.", icon="ℹ️")
+            if use_analog:
+                st.caption("Same shape, different size: your forecast follows the analog's decline, "
+                           "scaled so it recovers your log's oil in place × recovery factor.")
+        st.info("This forecast is only as good as its assumptions. If this well already produces, "
+                "switch to 'Producing well' mode to use its actual decline.", icon="ℹ️")
 
 # ---------------------------------------------------------------- 4. economics
 with econ_tab:
@@ -407,8 +460,13 @@ with econ_tab:
             discount_rate=c4.number_input("Discount rate (%/yr)", value=10.0, step=1.0) / 100,
         )
         if not has_prod:
-            gor = c4.number_input("Gas-oil ratio (scf/bbl)", value=wt["gor"], step=100.0,
-                                  key=f"gor_{well_type}", help="Gas produced per barrel of oil.") / 1000
+            # A new well's whole life is being forecast, so use the analog's lifetime GOR
+            # (late-life GOR rises as reservoir pressure drops and would overstate gas)
+            gor_default = round(producing_gor(lease, months=len(lease)) * 1000, -1) if use_analog else wt["gor"]
+            gor = c4.number_input("Gas-oil ratio (scf/bbl)", value=float(gor_default), step=100.0,
+                                  key=f"gor_{key_sfx}",
+                                  help="Gas produced per barrel of oil"
+                                       + (" (analog's lifetime average)." if use_analog else ".")) / 1000
 
     rate_pct = f"{a.discount_rate:.0%}"
     if has_prod:
@@ -490,7 +548,9 @@ with econ_tab:
 with summary_tab:
     st.title("Upstream appraisal")
     st.caption(f"Log: {header.get('WELL', 'unnamed')} · {well_type} · "
-               f"Production: {lease_label if has_prod else 'none (forecast from log)'} · "
+               + (f"Producing well: {lease_label} · " if has_prod
+                  else f"Prospect, decline from analog {lease_label} · " if use_analog
+                  else "Prospect, typical assumptions · ") +
                f"WTI ${a.oil_price:,.2f}/bbl")
 
     st.markdown("#### Rock → oil in place → recovery → dollars")
@@ -509,8 +569,10 @@ with summary_tab:
             st.warning(f"**Cross-check: review.** {verdict}", icon="⚠️")
     else:
         m[3].metric("Recovery factor (assumed)", f"{rf_assumed:.0%}")
-        st.info(f"EUR is oil in place × an assumed {rf_assumed:.0%} recovery factor. Add production "
-                "data from the sidebar to test that assumption against real performance.", icon="ℹ️")
+        shape = f"the decline shape of analog {lease_label}" if use_analog else "a typical decline shape"
+        st.info(f"EUR is oil in place × an assumed {rf_assumed:.0%} recovery factor, produced with "
+                f"{shape}. Once the well has its own production, switch to 'Producing well' mode "
+                "to test these assumptions against real performance.", icon="ℹ️")
 
     m = st.columns(4)
     m[0].metric(f"NPV @ {rate_pct}", money(full.npv))

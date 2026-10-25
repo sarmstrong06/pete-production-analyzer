@@ -6,13 +6,16 @@ LAS well log and it works out:
 1. **Well log** → net pay, porosity, water saturation (via the
    [PETE Python Log Reader](../pete-python-log-reader))
 2. **Volumetrics** → original oil in place (OOIP)
-3. **Production forecast** → EUR, one of two ways:
-   - **From the log alone** (pre-drill appraisal): EUR = OOIP × assumed recovery
-     factor, spread over time with an analog type curve
-   - **From production data** (optional): an Arps decline fitted to the well's actual
-     Texas Railroad Commission production. Fetch any Texas oil lease by number, or
-     use one of the bundled Spraberry examples. The recovery factor (EUR ÷ OOIP) then
-     becomes a cross-check between the log and the production.
+3. **Production forecast** → EUR, in one of three modes:
+
+   | Mode | Production data | How the forecast is built |
+   |---|---|---|
+   | **Prospect: typical assumptions** | None | EUR = OOIP × assumed recovery factor, with a typical decline shape for the well type |
+   | **Prospect: decline from an analog** | A *similar* well's lease | Same EUR, but the decline shape (b, first-year decline) and gas-oil ratio come from the analog's actual production. Your log sets the size; the analog sets the shape. |
+   | **Producing well** | The *same* well's lease | Arps decline fitted to the well's own history. The recovery factor (EUR ÷ OOIP) becomes a cross-check between the log and the production. |
+
+   Leases can be fetched live from the Texas Railroad Commission by lease number and
+   district, or picked from the bundled Spraberry examples.
 4. **Economics** → DCF: NPV, IRR, payout, breakeven oil price, and for producing
    wells, the remaining (PDP) value against an asking price
 
@@ -54,8 +57,13 @@ Then open http://localhost:8501.
 
 **Log-only type curve** (`production/decline.type_curve`)
 - Target EUR = OOIP × recovery factor. The decline shape (b, first-year decline)
-  comes from analog wells; the initial rate is solved so the forecast recovers
-  exactly the target EUR before falling below the cutoff rate.
+  comes from well-type defaults or a hyperbolic fit to an analog lease; the initial
+  rate is solved so the forecast recovers exactly the target EUR before falling
+  below the cutoff rate.
+- An analog can't supply a recovery factor: that needs the analog's own oil in
+  place, i.e. its log. The recovery factor stays a user input.
+- Analog gas-oil ratio is its lifetime average; late-life GOR rises as reservoir
+  pressure falls and would overstate a new well's gas.
 
 **Decline curves** (`production/decline.py`)
 - Fits start at peak rate by default; the fit window can be moved later to skip a

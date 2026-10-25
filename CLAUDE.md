@@ -39,7 +39,7 @@ Architecture decisions:
 
 ## Layout and running
 
-- The LAS log is the primary input; production data is optional. Without it, EUR = OOIP × assumed RF via `decline.type_curve`; with it, an Arps fit to actual production, and RF becomes a cross-check.
+- The LAS log is the primary input. Three appraisal modes (sidebar): **typical** (no production; EUR = OOIP × assumed RF via `decline.type_curve` with well-type default shape), **analog** (a similar well's lease supplies b, first-year decline and lifetime GOR; the log still sets size; RF stays an input because an analog has no OOIP), **producing well** (Arps fit to the same well's history; RF = EUR/OOIP becomes a cross-check). Using a different well's lease in producing-well mode makes the cross-check meaningless.
 - `production/rrc.py`: PDQ fetchers (PDQ has no API, so they replay the website's form flow): `fetch_lease` (any oil lease by number + district, used by the dashboard) and `PDQSession` (field-based, used by `fetch_data.py`). `clean_production` turns "NO RPT" into missing, drops trailing unreported months, adds BOPD.
 - `production/decline.py`: Arps fits (robust soft-L1 loss on log rate), modified hyperbolic forecast, EUR, `type_curve` for wells with no history.
 - `production/economics.py`: monthly DCF, IRR, breakeven, WTI loader.
