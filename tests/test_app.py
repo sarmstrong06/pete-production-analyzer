@@ -57,6 +57,18 @@ def test_field_type_curve_sets_shape():
     assert b_shown == float(metric(at, "P50 b-factor"))
 
 
+@pytest.mark.parametrize("mode", [MODES[0], MODES[2]])
+def test_uncertainty_tab(mode):
+    at = run("Horizontal oil (tight)", mode, source="Example well" if mode == MODES[2] else None)
+    assert not at.exception, [e.value for e in at.exception]
+    p90, p50, p10 = (metric(at, f"EUR, {p}") for p in ("P90", "P50", "P10"))
+    num = lambda s: float(s.split()[0].replace(",", ""))
+    assert num(p90) <= num(p50) <= num(p10)
+    assert metric(at, "Chance NPV > 0").endswith("%")
+    if mode == MODES[2]:
+        assert any(m.label.startswith("PDP value, P50") for m in at.metric)
+
+
 def test_gas_units():
     at = run("Horizontal gas (shale)", MODES[2], source="Example well")
     assert not at.exception

@@ -29,6 +29,7 @@ from welllog.volumetrics import net_pay_summary, ogip, ooip
 
 from production import kgs
 from production.typecurve import build_type_curve, fetch_field_wells
+from production.uncertainty import Range, npv_paths, percentiles, scaled_forecasts, tornado, unit_volumes
 from production.appraisal import (PRODUCTS, forecast_volumes, full_volumes, priced_history,
                                   recovery_factor_check, secondary_ratio)
 from production.decline import (MODELS, eur, fit_arps, forecast,
@@ -458,8 +459,8 @@ has_prod = mode == OWN and lease is not None      # forecast from this well's ow
 use_analog = mode == ANALOG and lease is not None  # decline shape borrowed from another well
 use_tc = mode == FIELD and tc is not None          # decline shape from a field type curve
 
-summary_tab, log_tab, vol_tab, fc_tab, econ_tab = st.tabs(
-    ["Summary", "1 · Well log", "2 · Volumetrics", "3 · Production forecast", "4 · Economics"])
+summary_tab, log_tab, vol_tab, fc_tab, econ_tab, unc_tab = st.tabs(
+    ["Summary", "1 · Well log", "2 · Volumetrics", "3 · Production forecast", "4 · Economics", "5 · Uncertainty"])
 
 # ---------------------------------------------------------------- 1. well log
 with log_tab:
@@ -935,6 +936,162 @@ with econ_tab:
     with st.expander("Monthly cash flow table (full-cycle)"):
         st.dataframe(full_cf.assign(date=full_cf["date"].dt.strftime("%Y-%m")).round(2), hide_index=True)
 
+# ---------------------------------------------------------------- 5. uncertainty
+mc = None
+with unc_tab:
+    st.markdown("Each uncertain input gets a range: **low, most likely, high** (a triangular distribution). "
+                "The appraisal is run thousands of times with random values from those ranges. "
+                "**P90** is the low case (90% chance of doing at least this well), **P50** the median, "
+                "**P10** the high case.")
+    if not pay["net_pay_ft"] or in_place <= 0:
+        st.info("No pay in the log zone, so there is nothing to simulate.", icon="ℹ️")
+    else:
+        oil_w = product == "oil"
+        h0, phi0, sw0 = pay["net_pay_ft"], pay["avg_phi"], pay["avg_sw"]
+        vol_rows = [
+            ("area", "Drainage area (acres)", area, area * 0.75, area * 1.5),
+            ("h", "Net pay (ft)", h0, h0 * 0.8, h0 * 1.2),
+            ("phi", "Porosity (%)", phi0 * 100, phi0 * 90, phi0 * 110),
+            ("sw", "Water saturation (%)", sw0 * 100, sw0 * 85, min(sw0 * 115, 95.0)),
+            ("fvf", "Bo (rb/stb)" if oil_w else "Bg (rcf/scf)", fvf, fvf * (0.92 if oil_w else 0.8),
+             fvf * (1.08 if oil_w else 1.25)),
+        ]
+        price_rows = [
+            ("wti", "WTI, first forecast year ($/bbl)", float(oil_deck[0]), oil_deck[0] * 0.7, oil_deck[0] * 1.3),
+            ("hh", "Henry Hub, first forecast year ($/MCF)", float(gas_deck[0]), gas_deck[0] * 0.7, gas_deck[0] * 1.4),
+            ("loe", "Fixed LOE ($/month)", a.loe_fixed, a.loe_fixed * 0.8, a.loe_fixed * 1.3),
+        ]
+        if has_prod:
+            rows = [("rem", "Remaining production (% of forecast)", 100.0, 70.0, 125.0)] + price_rows + vol_rows
+            npv_keys = ["rem", "wti", "hh", "loe"]  # the volumetric rows only move the recovery factor
+        else:
+            rf_lo = min(wt["rf_typical"][0] * 100, rf_assumed * 60)
+            rf_hi = max(wt["rf_typical"][1] * 100, rf_assumed * 140)
+            rows = vol_rows + [("rf", "Recovery factor (%)", rf_assumed * 100, rf_lo, rf_hi)] + price_rows + \
+                [("capex", "Capex ($)", a.capex, a.capex * 0.9, a.capex * 1.25)]
+            npv_keys = [r[0] for r in rows]
+        keys = [r[0] for r in rows]
+        table = pd.DataFrame([{"Input": lbl, "Low": float(lo), "Most likely": float(ml), "High": float(hi)}
+                              for _, lbl, ml, lo, hi in rows])
+        table_key = "mc_" + "_".join(f"{r[2]:.6g}" for r in rows) + mode + well_type
+        c1, c2 = st.columns([4, 1])
+        edited = c1.data_editor(table, hide_index=True, disabled=["Input"], key=table_key, width="stretch",
+                                column_config={c: st.column_config.NumberColumn(format="%.4g")
+                                               for c in ("Low", "Most likely", "High")})
+        n_sims = c2.selectbox("Simulations", [1000, 2000, 5000], index=1)
+        c2.caption("Defaults are built around the base case on the other tabs; edit any cell.")
+        ranges = {k: Range(r["Low"], r["Most likely"], r["High"]) for k, (_, r) in zip(keys, edited.iterrows())}
+
+        def in_place_of(v):
+            if oil_w:
+                return ooip(v["area"], v["h"], v["phi"] / 100, v["sw"] / 100, v["fvf"])
+            return ogip(v["area"], v["h"], v["phi"] / 100, v["sw"] / 100, v["fvf"]) / 1000
+
+        if has_prod:
+            actual = vol["actual"].to_numpy()
+            future = ~actual
+            base_main = vol[P["volume"]].fillna(0).to_numpy(float)
+            base_other = vol[P["other"]].fillna(0).to_numpy(float)
+            cum_main = float(base_main[actual].sum())
+        else:
+            mc_start = pd.Timestamp(first_prod).replace(day=1)
+            unit_rate, unit_vol = unit_volumes(mc_start, b, d_eff, d_term)
+            mc_dates = [mc_start + pd.DateOffset(months=k) for k in range(len(unit_vol))]
+            oil_deck_m, gas_deck_m = price_deck(mc_dates, years, oil_deck), price_deck(mc_dates, years, gas_deck)
+
+        def simulate(v):
+            """EUR, NPV (and for producing wells PDP value and recovery factor) for arrays of inputs."""
+            ip = in_place_of(v)
+            wti_x, hh_x = v["wti"] / oil_deck[0], v["hh"] / gas_deck[0]
+            if has_prod:
+                f = v["rem"][:, None] / 100
+                main = np.where(actual, base_main, base_main * f)
+                other = np.where(actual, base_other, base_other * f)
+                ov, gv = (main, other) if oil_w else (other, main)
+                op = np.where(actual, oil_prices, oil_prices * wti_x[:, None])
+                gp = np.where(actual, gas_prices, gas_prices * hh_x[:, None])
+                full_npv = npv_paths(ov, gv, op, gp, a, loe_fixed=v["loe"])["npv"]
+                pdp_npv = npv_paths(ov[:, future], gv[:, future], op[:, future], gp[:, future], a,
+                                    loe_fixed=v["loe"], include_capex=False)["npv"]
+                eur_s = cum_main + base_main[future].sum() * f[:, 0]
+                return {"eur": eur_s, "npv": full_npv, "pdp": pdp_npv, "rf": eur_s / ip}
+            eur_s = ip * v["rf"] / 100
+            main = scaled_forecasts(eur_s, unit_rate, unit_vol, q_limit)
+            used = np.flatnonzero(main.any(axis=0))
+            n_m = int(used[-1]) + 1 if len(used) else 1
+            main = main[:, :n_m]
+            other = main * ratio
+            ov, gv = (main, other) if oil_w else (other, main)
+            res = npv_paths(ov, gv, oil_deck_m[None, :n_m] * wti_x[:, None], gas_deck_m[None, :n_m] * hh_x[:, None],
+                            a, loe_fixed=v["loe"], capex=v["capex"])
+            return {"eur": eur_s, "npv": res["npv"]}
+
+        rng = np.random.default_rng(7)  # fixed seed: the same inputs give the same answer
+        sims = simulate({k: r.sample(rng, n_sims) for k, r in ranges.items()})
+        base_vals = {k: np.array([r.mode]) for k, r in ranges.items()}
+        base_npv = float(simulate(base_vals)["npv"][0])
+
+        def run_one(name, value):
+            return float(simulate({**base_vals, name: np.array([value])})["npv"][0])
+
+        tor = tornado(base_npv, run_one, {k: ranges[k] for k in npv_keys})
+        tor["input"] = tor["input"].map(dict((r[0], r[1]) for r in rows))
+        mc = {"n": n_sims, "eur": percentiles(sims["eur"]), "npv": percentiles(sims["npv"]),
+              "chance": float((sims["npv"] > 0).mean()), "npv_samples": sims["npv"], "base_npv": base_npv,
+              "tornado": tor, "table": edited}
+        if has_prod:
+            mc["pdp"], mc["rf"] = percentiles(sims["pdp"]), percentiles(sims["rf"])
+
+        st.markdown(f"#### Results from {n_sims:,} simulations")
+        m = st.columns(4)
+        for col, p in zip(m, ("P90", "P50", "P10")):
+            col.metric(f"EUR, {p}", volume(mc["eur"][p], product))
+        m[3].metric("Chance NPV > 0", f"{mc['chance']:.0%}")
+        m = st.columns(4)
+        for col, p in zip(m, ("P90", "P50", "P10")):
+            col.metric(f"NPV @ {rate_pct}, {p}", money(mc["npv"][p]))
+        if has_prod:
+            rf_p = mc["rf"]
+            m[3].metric("Recovery factor range", f"{rf_p['P90']:.0%} - {rf_p['P50']:.0%} - {rf_p['P10']:.0%}",
+                        help="P90 - P50 - P10 of EUR ÷ volume in place across the simulations. Wide when the "
+                             "log inputs are uncertain.")
+            m = st.columns(4)
+            for col, p in zip(m, ("P90", "P50", "P10")):
+                col.metric(f"PDP value, {p}", money(mc["pdp"][p]))
+        else:
+            m[3].metric("Base case NPV", money(base_npv), help="All inputs at their most likely values.")
+
+        c1, c2 = st.columns(2)
+        fig = go.Figure(go.Histogram(x=sims["npv"] / 1e6, nbinsx=60, marker_color=BLUE, opacity=0.85,
+                                     hovertemplate="NPV $%{x:.2f}M: %{y} runs<extra></extra>", name="Simulations"))
+        for p, dash, pos in (("P90", "dash", "top left"), ("P50", "solid", "top"), ("P10", "dash", "top right")):
+            fig.add_vline(x=mc["npv"][p] / 1e6, line=dict(color=MUTED, width=2, dash=dash),
+                          annotation_text=p, annotation_position=pos)
+        lo_x, hi_x = float(sims["npv"].min()), float(sims["npv"].max())
+        if lo_x <= 0 <= hi_x:  # mark breakeven only when some runs lose money and some make it
+            fig.add_vline(x=0, line=dict(color=ORANGE, width=2), annotation_text="$0",
+                          annotation_position="bottom right")
+        fig.update_xaxes(title_text=f"NPV @ {rate_pct} ($M)")
+        fig.update_yaxes(title_text="Simulations")
+        style(fig, height=380).update_layout(title="NPV distribution", hovermode="closest", showlegend=False,
+                                             bargap=0.05)
+        c1.plotly_chart(fig, width="stretch")
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(y=tor["input"], x=(tor["low"] - base_npv) / 1e6, orientation="h", name="Input at low",
+                             marker_color=BLUE, hovertemplate="%{y}: %{x:+.2f} $M<extra>low</extra>"))
+        fig.add_trace(go.Bar(y=tor["input"], x=(tor["high"] - base_npv) / 1e6, orientation="h",
+                             name="Input at high", marker_color=ORANGE,
+                             hovertemplate="%{y}: %{x:+.2f} $M<extra>high</extra>"))
+        fig.update_yaxes(autorange="reversed")
+        fig.update_xaxes(title_text="Change in NPV from the base case ($M)")
+        style(fig, height=380).update_layout(title="What moves NPV most (tornado)", barmode="overlay",
+                                             hovermode="closest")
+        c2.plotly_chart(fig, width="stretch")
+        st.caption("Tornado: each input moved to its low and high value with the others at most likely. "
+                   "The decline shape is held fixed, and inputs are sampled independently."
+                   + (" Months already produced keep their actual volumes and prices." if has_prod else ""))
+
 # ---------------------------------------------------------------- summary
 with summary_tab:
     st.title("Upstream appraisal")
@@ -978,6 +1135,12 @@ with summary_tab:
     else:
         m[2].metric("Payout", f"{full.payout_months:.0f} mo" if not np.isnan(full.payout_months) else "never")
     m[3].metric(be_label, be_text)
+
+    if mc:
+        st.markdown(f"**Uncertainty** ({mc['n']:,} simulations, tab 5): EUR {volume(mc['eur']['P90'], product)} "
+                    f"(P90) to {volume(mc['eur']['P10'], product)} (P10); NPV {money(mc['npv']['P90'])} to "
+                    f"{money(mc['npv']['P10'])}; **{mc['chance']:.0%} chance** the NPV is positive. "
+                    f"Biggest driver: {mc['tornado']['input'].iloc[0].split(' (')[0].lower()}.")
 
     if source == SRC_SAMPLE:
         st.info("The synthetic test well is 12 ft thick with 3.5 ft of pay, so it holds very little. "
