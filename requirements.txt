@@ -6,4 +6,5 @@ plotly
 streamlit
 requests
 lasio
+pytest
 -e ../pete-python-log-reader

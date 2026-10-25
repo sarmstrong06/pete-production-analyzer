@@ -43,6 +43,17 @@ streamlit run app.py
 
 Then open http://localhost:8501.
 
+## Tests
+
+```bash
+python -m pytest
+```
+
+Unit tests check the decline math against known Arps curves, the cash flow
+against hand calculations, the recovery factor verdicts, and the RRC parsing.
+`tests/test_app.py` runs the whole dashboard headlessly in every mode. No test
+uses the network.
+
 ## Data
 
 - `data/spraberry_leases.csv`: monthly oil and casinghead gas for 8 horizontal-well
