@@ -6,11 +6,14 @@ Writes (all small enough to keep in git):
 - data/barnett_gas_wells.csv : 8 Barnett Shale gas wells (RRC PDQ)
 - data/wti_monthly.csv       : WTI spot price (FRED)
 - data/henry_hub_monthly.csv : Henry Hub spot gas price (FRED)
+- data/raw/all_kansas_leases.zip : KGS index of Kansas leases and their wells'
+  API numbers, used to find a Kansas well's lease (4 MB; not kept in git)
 """
 
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from production.rrc import PDQSession, fetch_lease
 
@@ -63,3 +66,12 @@ for series, name in [("MCOILWTICO", "wti_monthly.csv"), ("MHHNGSP", "henry_hub_m
     p = pd.read_csv(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}")
     p.to_csv(DATA / name, index=False)
     print(f"Saved {DATA / name} ({len(p)} months)")
+
+# ---- Kansas lease index from the Kansas Geological Survey (public download).
+# Links each lease to its wells' API numbers; the dashboard uses it to find a
+# Kansas well's lease. Kept in data/raw/, which git ignores.
+(DATA / "raw").mkdir(exist_ok=True)
+r = requests.get("https://www.kgs.ku.edu/PRS/Ora_Archive/all_kansas_leases.zip", timeout=300)
+r.raise_for_status()
+(DATA / "raw" / "all_kansas_leases.zip").write_bytes(r.content)
+print(f"Saved {DATA / 'raw' / 'all_kansas_leases.zip'} ({len(r.content) / 1e6:.1f} MB)")

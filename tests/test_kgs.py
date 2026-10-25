@@ -4,7 +4,10 @@ KGS file format; real KGS monthly volumes are licensed and not stored here."""
 import pandas as pd
 import pytest
 
-from production.kgs import parse_month_file, parse_well_page, split_api, spread_sales, wells_on_lease
+import zipfile
+
+from production.kgs import (lookup_api, parse_month_file, parse_well_page, split_api, spread_sales,
+                            wells_on_lease)
 
 HEADER = ('"LEASE_KID","LEASE","DOR_CODE","API_NUMBER","FIELD","PRODUCING_ZONE","OPERATOR","COUNTY",'
           '"TOWNSHIP","TWN_DIR","RANGE","RANGE_DIR","SECTION","SPOT","LATITUDE","LONGITUDE",'
@@ -46,6 +49,24 @@ def test_spread_sales_keeps_yearly_totals():
     assert m["oil_bbl"].iloc[0] == pytest.approx(600 / 8)  # spread evenly
     assert (m["kind"] == "Oil").all() and m["gas_mcf"].isna().all()
     assert m["bopd"].iloc[0] == pytest.approx(75 / 31)
+
+
+def test_lookup_in_lease_index(tmp_path):
+    index = ('"LEASE_KID","LEASE","DOR_CODE","API_NUMBER","OPERATOR","COUNTY","TOWNSHIP","TWN_DIR","RANGE",'
+             '"RANGE_DIR","SECTION","SPOT","LATITUDE","LONGITUDE","PRODUCES","PRODUCTION","YEAR_START",'
+             '"YEAR_STOP","URL"\n'
+             '"1","Solo 1","1","15-001-00001 ","Test Oil Co","Allen","1","S","1","E","1","","38","-98","OIL","100","2010","2026",""\n'
+             '"2","Unit","2","15-001-00002, 15-001-00003-0001 ","Test Oil Co","Allen","1","S","1","E","1","","38","-98","OIL","100","2010","2026",""\n'
+             '"3","Gas lease","3","15-001-00004 ","Gas Co","Allen","1","S","1","E","1","","38","-98","GAS","100","2010","2026",""\n')
+    path = tmp_path / "all_kansas_leases.zip"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("all_kansas_leases.txt", index)
+    assert lookup_api("15-001-00001-00-00", index_path=path)[0]["lease_kid"] == "1"
+    found = lookup_api("15001000030001", index_path=path)  # sidetrack suffix ignored
+    assert found[0]["lease_kid"] == "2" and found[0]["n_wells"] == 2
+    assert lookup_api("15-001-00004", index_path=path) == []  # gas leases aren't oil leases
+    with pytest.raises(ValueError):
+        lookup_api("42-227-40326", index_path=path)
 
 
 def test_parse_well_page():

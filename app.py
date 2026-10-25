@@ -61,7 +61,7 @@ WELL_TYPES = {
         label="a vertical conventional oil well", b=0.6, d_eff=35.0, q_limit=3.0, ratio=1.0,
         fvf=1.30, capex=2_500_000.0, loe_fixed=4000.0, loe_var=6.0, loe_var_gas=0.0,
         oil_diff=-1.50, gas_realized=70.0,
-        note="A vertical well in a conventional sandstone drains roughly 40 acres "
+        note="A vertical well in a conventional sandstone or carbonate drains roughly 40 acres "
              "and recovers 10-25% of oil in place on primary production."),
     "Horizontal oil (tight)": dict(
         product="oil", area=200.0, rf=8.0, rf_typical=(0.03, 0.15), rf_plausible=(0.01, 0.30),
@@ -115,6 +115,18 @@ MODE_HELP = {
          "(EUR ÷ volume in place) becomes a cross-check between the log and the production.",
 }
 PRICE_FLAT, PRICE_ESC, PRICE_CUSTOM = "Flat", "Escalating", "Custom deck"
+MATRIX = {"Sandstone": 2.65, "Limestone": 2.71, "Dolomite": 2.87}  # grain density, g/cc
+
+# Log sources (sidebar step 1). The real example's zone and lithology come from the
+# KGS well page (formation tops from the geologist's report).
+SRC_SAMPLE, SRC_REAL, SRC_UPLOAD = ("Synthetic test well", "Real example: Nuss 1, Kansas", "Upload a LAS file")
+REAL_LAS = ROOT / "data" / "logs" / "nuss_1.las"
+LOG_PRESETS = {
+    SRC_REAL: dict(top=3106.0, base=3342.0, lithology="Limestone", gr_clean=15.0, gr_shale=100.0,
+                   note="Nuss 1 (API 15-009-25378), Barton County, Kansas: discovery well of the Galatia "
+                        "East field, producing from the Lansing-Kansas City limestones (3,106-3,342 ft). "
+                        "Log courtesy of the Kansas Corporation Commission via the Kansas Geological Survey."),
+}
 
 st.set_page_config(page_title="Upstream Appraisal", page_icon="🛢️", layout="wide")
 
@@ -171,7 +183,7 @@ def lookup_cached(api8):
 
 @st.cache_data(ttl=86400, show_spinner="Looking up the API number at the Kansas Geological Survey...")
 def kgs_lookup_cached(api_digits):
-    return kgs.lookup_api(api_digits)
+    return kgs.lookup_api(api_digits, index_path=ROOT / "data" / "raw" / "all_kansas_leases.zip")
 
 
 @st.cache_data(ttl=86400, show_spinner="Fetching production from the Kansas Geological Survey...")
@@ -231,15 +243,20 @@ examples, hist_prices = load_data()
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
     st.header("1 · Well log")
-    source = st.radio("LAS file", ["Bundled sample", "Upload a LAS file"], label_visibility="collapsed")
-    if source == "Upload a LAS file":
+    source = st.radio("LAS file", [SRC_SAMPLE, SRC_REAL, SRC_UPLOAD], label_visibility="collapsed")
+    if source == SRC_UPLOAD:
         up = st.file_uploader("LAS file", type=["las", "LAS"])
         las_text = up.getvalue().decode("utf-8", errors="ignore") if up else None
+    elif source == SRC_REAL:
+        las_text = REAL_LAS.read_text()
     else:
         las_text = SAMPLE_LAS.read_text()
     if las_text is None:
-        st.info("Upload a LAS file, or switch back to the bundled sample.")
+        st.info("Upload a LAS file, or pick one of the examples.")
         st.stop()
+    preset = LOG_PRESETS.get(source, {})
+    if preset:
+        st.caption(preset["note"])
     log, header, las_params, units = read_las(las_text)
     api = (header.get("API") or "").strip() or (header.get("UWI") or "").strip()
     st.caption(f"Log: {header.get('WELL', 'unnamed well')}" + (f" · API {api}" if api else ""))
@@ -292,10 +309,12 @@ with st.sidebar:
                 found = kgs_lookup_cached(target[1])
                 if not found:
                     st.error("The KGS has no oil lease for that API number (the well may be a dry hole "
-                             "or a gas well, or have no LAS file at the KGS).")
+                             "or a gas well). Run `python fetch_data.py` once to download the KGS "
+                             "lease index if you haven't.")
                 else:
                     w = found[0]
-                    st.caption(f"API {w['api']} → {w['lease_name']} #{w['well']}, KGS oil lease "
+                    well_txt = f" #{w['well']}" if w["well"] else ""
+                    st.caption(f"API {w['api']} → {w['lease_name']}{well_txt}, KGS oil lease "
                                f"{w['lease_kid']}, {w['county']} County, Kansas")
                     lease, n_wells = kgs_fetch_cached(w["lease_kid"])
                     st.caption("Kansas reports oil sales (truckloads), not production: each year's sales "
@@ -387,9 +406,21 @@ summary_tab, log_tab, vol_tab, fc_tab, econ_tab = st.tabs(
 
 # ---------------------------------------------------------------- 1. well log
 with log_tab:
-    with st.expander("Interpretation parameters", expanded=False):
+    log_key = f"{header.get('WELL', '')}_{len(log)}"  # a new log resets the zone
+    d_min, d_max = float(log["DEPT"].min()), float(log["DEPT"].max())
+    with st.expander("Interpretation parameters", expanded=source == SRC_UPLOAD):
         cols = [c for c in log.columns if c != "DEPT"]
-        c1, c2, c3 = st.columns(3)
+        c0, c1, c2, c3 = st.columns(4)
+        with c0:
+            st.markdown("**Zone to evaluate**")
+            z_top = st.number_input("Top (ft)", value=preset.get("top", d_min), min_value=d_min, max_value=d_max,
+                                    step=10.0,
+                                    key=f"ztop_{log_key}",
+                                    help="Limit the evaluation to the producing formation. A whole-well log "
+                                         "includes salt, anhydrite and other zones that can falsely pass "
+                                         "the pay cutoffs.")
+            z_base = st.number_input("Base (ft)", value=preset.get("base", d_max), min_value=d_min,
+                                     max_value=d_max, step=10.0, key=f"zbase_{log_key}")
         with c1:
             st.markdown("**Curves**")
             gr_col = pick_curve("Gamma ray", "GR", cols)
@@ -397,10 +428,14 @@ with log_tab:
             rt_col = pick_curve("Deep resistivity", "RT", cols)
         with c2:
             st.markdown("**Rock and fluid**")
-            gr_clean = st.number_input("GR clean sand (API)", value=25.0)
-            gr_shale = st.number_input("GR shale (API)", value=110.0)
-            rho_matrix = st.number_input("Matrix density (g/cc)", value=2.65,
+            lithology = st.selectbox("Lithology", list(MATRIX), key=f"lith_{log_key}",
+                                     index=list(MATRIX).index(preset.get("lithology", "Sandstone")),
+                                     help="Sets the matrix (grain) density.")
+            rho_matrix = st.number_input("Matrix density (g/cc)", value=MATRIX[lithology],
+                                         key=f"rhoma_{log_key}_{lithology}",
                                          help="2.65 sandstone, 2.71 limestone, 2.87 dolomite")
+            gr_clean = st.number_input("GR clean (API)", value=preset.get("gr_clean", 25.0), key=f"grc_{log_key}")
+            gr_shale = st.number_input("GR shale (API)", value=preset.get("gr_shale", 110.0), key=f"grs_{log_key}")
             rho_fluid = st.number_input("Fluid density (g/cc)", value=1.0)
             rw_default = float(las_params.get("RW", 0.05) or 0.05)
             rw = st.number_input("Rw, formation water resistivity (ohm-m)", value=rw_default,
@@ -411,6 +446,13 @@ with log_tab:
             phi_min = st.number_input("Porosity ≥", value=0.08, step=0.01)
             sw_max = st.number_input("Water saturation ≤", value=0.50, step=0.05)
 
+    if z_base <= z_top:
+        st.error("The zone base must be deeper than its top.")
+        st.stop()
+    log = log[(log["DEPT"] >= z_top) & (log["DEPT"] <= z_base)].copy()
+    if len(log) < 2:
+        st.error("The zone holds fewer than two log samples; widen it.")
+        st.stop()
     log["VSH"] = shale_volume(log[gr_col], gr_clean, gr_shale)
     log["PHI"] = density_porosity(log[rhob_col], rho_matrix, rho_fluid)
     log["SW"] = archie_sw(log[rt_col], log["PHI"], rw)
@@ -841,6 +883,6 @@ with summary_tab:
         m[2].metric("Payout", f"{full.payout_months:.0f} mo" if not np.isnan(full.payout_months) else "never")
     m[3].metric(be_label, be_text)
 
-    if source == "Bundled sample":
-        st.info("The bundled log is a 12 ft synthetic test well with 3.5 ft of pay, so it holds "
-                "very little. Upload a real LAS file to appraise a real well.", icon="ℹ️")
+    if source == SRC_SAMPLE:
+        st.info("The synthetic test well is 12 ft thick with 3.5 ft of pay, so it holds very little. "
+                "Pick the real Kansas example or upload a LAS file to appraise a real well.", icon="ℹ️")

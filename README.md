@@ -71,10 +71,41 @@ dashboard headlessly for every well type and mode. No test uses the network.
 - Refresh all of these with `python fetch_data.py`. Production comes from the RRC
   [Production Data Query](https://webapps.rrc.texas.gov/PDQ/); API lookups use the
   RRC [Wellbore Query](https://webapps2.rrc.texas.gov/EWA/wellboreQueryAction.do).
-- The bundled well log is a 12 ft synthetic test well from the log reader, not a log
-  from these wells. Upload a real LAS file in the dashboard sidebar.
+- `data/logs/nuss_1.las`: a real log, Nuss 1 (API 15-009-25378), Barton County,
+  Kansas, courtesy of the Kansas Corporation Commission via the KGS. See the
+  worked example below.
+- The synthetic test well is the log reader's 12 ft sample, for testing only.
+
+## Worked example: Nuss 1, Kansas
+
+A real well, end to end. Pick **Real example: Nuss 1, Kansas** in the sidebar,
+well type **Vertical oil**, mode **Producing well**.
+
+Nuss 1 is the discovery well of the Galatia East field (drilled January 2010),
+producing from the Lansing-Kansas City limestones. The zone (3,106-3,342 ft) and
+lithology come from the KGS formation tops; the production is found from the
+log's API number.
+
+| Step | Result |
+|---|---|
+| Log, Lansing-Kansas City, limestone matrix | 23 ft net pay, 17.8% porosity, 22.9% water saturation |
+| Volumetrics, 40 acres, Bo 1.3 | 754 Mbbl oil in place |
+| Production (KGS, by API number) | 180 Mbbl produced 2010-2026; EUR 203 Mbbl |
+| Cross-check | Recovery factor 27%, just above the typical 10-25% for a vertical conventional well |
+
+The cross-check says "worth a second look": a 27% recovery factor suggests the well
+drains more than the assumed 40 acres (or the pay is thicker than the cutoffs
+count). Raising the drainage area to about 50 acres brings it into the typical
+range. This is the kind of reconciliation between log and production the
+dashboard is built for.
 
 ## Method
+
+**Evaluating the log** (`app.py`, using the log reader)
+- A zone window limits the evaluation to the producing formation. Whole-well logs
+  contain salt, anhydrite and other zones that can falsely pass the pay cutoffs.
+- Lithology sets the matrix density for density porosity: 2.65 g/cc sandstone,
+  2.71 limestone, 2.87 dolomite.
 
 **Matching a log to its production** (`production/rrc.py`)
 - The LAS header's `API` (or `UWI`) number is normalized to the 8-digit Texas form

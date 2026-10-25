@@ -1,7 +1,8 @@
 """Kansas oil lease production from the Kansas Geological Survey (KGS).
 
-Kansas wells are found by API number (state code 15) through the KGS LAS file
-index, which links each logged well to its oil lease.
+Kansas wells are found by API number (state code 15) in the KGS lease index
+(all_kansas_leases.zip, which lists each lease's wells), downloaded to
+data/raw/ by fetch_data.py.
 
 Two things differ from Texas:
 - Kansas reports oil *sales* (tank-truck loads sold to a purchaser), not
@@ -17,7 +18,9 @@ redistribution, so this data is fetched live and not saved in the repository.
 
 import io
 import re
+import zipfile
 from html import unescape
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -42,17 +45,20 @@ def _text(html):
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html)))
 
 
-def lookup_api(api, timeout=60):
+def lookup_api(api, index_path=None, timeout=60):
     """Find a Kansas well's oil lease from its API number.
 
-    Searches the KGS LAS file index (so the well must have a LAS file there,
-    which is the case for any log downloaded from the KGS). Returns a list of
-    dicts with api, well_kid, lease_kid, lease_name, well, field, operator,
-    county; empty if the well isn't found or has no oil lease.
+    Uses the KGS lease index (all_kansas_leases.zip, downloaded by
+    fetch_data.py) when index_path exists; otherwise searches the KGS website
+    (LAS file index, then the well page, which KGS may refuse to automated
+    visitors). Returns a list of dicts with api, lease_kid, lease_name, field,
+    operator, county, n_wells; empty if the well has no oil lease.
     """
     parts = split_api(api)
     if not parts or parts[0] != "15":
         raise ValueError(f"{api!r} is not a Kansas API number (15-CCC-WWWWW).")
+    if index_path is not None and Path(index_path).exists():
+        return lookup_in_index(api, index_path)
     _, county, well = parts
     s = requests.Session()
     s.headers.update(UA)
@@ -67,6 +73,26 @@ def lookup_api(api, timeout=60):
         if found:
             results.append({"well_kid": kid, **found})
     return results
+
+
+def lookup_in_index(api, index_path):
+    """lookup_api against the KGS lease index file (zip of all_kansas_leases.txt, or the .txt)."""
+    state, county, well = split_api(api)
+    key = f"{state}-{county}-{well}"
+    path = Path(index_path)
+    if path.suffix == ".zip":
+        with zipfile.ZipFile(path) as z:
+            text = z.read(z.namelist()[0]).decode("utf-8", errors="ignore")
+    else:
+        text = path.read_text(errors="ignore")
+    leases = pd.read_csv(io.StringIO(text), dtype=str)
+    leases = leases[leases["API_NUMBER"].fillna("").str.contains(key, regex=False)
+                    & (leases["PRODUCES"].fillna("") == "OIL")]
+    return [{
+        "api": key, "lease_kid": r["LEASE_KID"], "lease_name": r["LEASE"].strip(), "well": "",
+        "field": "", "operator": (r["OPERATOR"] or "").strip(), "county": r["COUNTY"],
+        "n_wells": len([a for a in str(r["API_NUMBER"]).split(",") if a.strip()]),
+    } for _, r in leases.iterrows()]
 
 
 def parse_well_page(page_html):

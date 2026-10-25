@@ -36,6 +36,18 @@ def test_dashboard_renders(well_type, mode):
     assert {in_place, "EUR", "NPV @ 10%"} <= metrics
 
 
+def test_real_kansas_log():
+    """The real Nuss 1 log, evaluated over its Lansing-Kansas City zone as a limestone."""
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.sidebar.radio[0].set_value("Real example: Nuss 1, Kansas").run()
+    at.sidebar.radio[1].set_value("Vertical oil (conventional)").run()
+    assert not at.exception
+    assert metric(at, "Net pay") == "23.0 ft"
+    assert metric(at, "Avg porosity (pay)") == "17.8%"
+    assert next(n.value for n in at.number_input if n.label == "Top (ft)") == 3106.0
+    assert next(s.value for s in at.selectbox if s.label == "Lithology") == "Limestone"
+
+
 def test_gas_units():
     at = run("Horizontal gas (shale)", MODES[2], source="Example well")
     assert not at.exception
