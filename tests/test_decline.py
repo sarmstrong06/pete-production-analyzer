@@ -109,14 +109,25 @@ def test_forecast_continues_after_history_and_stops_at_limit():
     fc = forecast(fit, hist, q_limit=5)
     assert fc["t"].iloc[0] == hist["t"].iloc[-1] + 1
     assert fc["date"].iloc[0] == hist["date"].iloc[-1] + pd.DateOffset(months=1)
-    assert fc["bopd"].min() >= 5
-    assert fc["bopd"].is_monotonic_decreasing
-    assert eur(df, fc) == pytest.approx(df["oil_bbl"].sum() + fc["oil_bbl"].sum())
+    assert fc["q"].min() >= 5
+    assert fc["q"].is_monotonic_decreasing
+    assert fc["volume"].iloc[0] == pytest.approx(fc["q"].iloc[0] * fc["date"].iloc[0].days_in_month)
+    assert eur(df, fc) == pytest.approx(df["oil_bbl"].sum() + fc["volume"].sum())
+
+
+def test_gas_rate_column():
+    """A gas well fits its Mcf/day rate the same way an oil well fits bbl/day."""
+    df = synthetic_lease(qi=3000, di=0.12, b=1.2).rename(columns={"bopd": "gas_mcfd", "oil_bbl": "gas_mcf"})
+    hist = prepare_history(df, rate="gas_mcfd")
+    fit = fit_arps(hist, "hyperbolic")
+    assert fit.qi == pytest.approx(3000, rel=0.01) and fit.b == pytest.approx(1.2, abs=0.03)
+    fc = forecast(fit, hist, q_limit=50)
+    assert eur(df, fc, "gas_mcf") == pytest.approx(df["gas_mcf"].sum() + fc["volume"].sum())
 
 
 def test_type_curve_hits_target_eur():
     fit, fc = type_curve(300_000, "2026-01-01", b=1.1, d_eff_initial=0.7)
-    assert fc["oil_bbl"].sum() == pytest.approx(300_000, rel=1e-3)
+    assert fc["volume"].sum() == pytest.approx(300_000, rel=1e-3)
     assert fit.di_annual_eff == pytest.approx(0.7)
     assert fc["date"].iloc[0] == pd.Timestamp("2026-01-01")
 

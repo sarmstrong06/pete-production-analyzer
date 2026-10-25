@@ -4,7 +4,7 @@ Monthly cash flow:
     revenue   = oil × oil price + gas × gas price, after the price differential
     net rev.  = revenue × net revenue interest (NRI = working interest × (1 − royalty))
     taxes     = net revenue × (severance + ad valorem)
-    LOE       = working interest × (fixed $/month + variable $/bbl × oil)
+    LOE       = working interest × (fixed $/month + $/bbl × oil + $/Mcf × gas)
     net cash  = net revenue − taxes − LOE − capex
 
 The well is shut in at the economic limit: the first month after which
@@ -31,6 +31,7 @@ class Assumptions:
     ad_valorem: float = 0.02         # property tax, fraction of revenue
     loe_fixed: float = 8000.0        # $/month per well
     loe_var: float = 4.0             # $/bbl oil (water handling, trucking, chemicals)
+    loe_var_gas: float = 0.0         # $/Mcf gas (compression, gathering); mainly for gas wells
     capex: float = 8_000_000.0       # drilling and completion, spent in month 0 (full-cycle only)
     discount_rate: float = 0.10      # annual; 10% gives the industry-standard PV10
 
@@ -44,8 +45,9 @@ def cash_flow(volumes, a, oil_prices=None, gas_prices=None, include_capex=False)
 
     volumes    : DataFrame with date, oil_bbl, gas_mcf (gas optional)
     a          : Assumptions
-    oil_prices : optional Series of WTI $/bbl per month (aligned to volumes),
-                 e.g. historical prices; defaults to the flat a.oil_price
+    oil_prices : optional WTI $/bbl per month (aligned to volumes), e.g.
+                 historical prices or a price deck; defaults to the flat a.oil_price
+    gas_prices : the same for Henry Hub $/MCF; defaults to the flat a.gas_price
     include_capex : charge a.capex in the first month (full-cycle economics)
     """
     cf = volumes[["date"]].copy().reset_index(drop=True)
@@ -61,7 +63,7 @@ def cash_flow(volumes, a, oil_prices=None, gas_prices=None, include_capex=False)
     gas_rev = a.nri * gas * cf["gas_price"]
     cf["net_revenue"] = oil_rev + gas_rev
     cf["taxes"] = oil_rev * a.severance_oil + gas_rev * a.severance_gas + cf["net_revenue"] * a.ad_valorem
-    cf["loe"] = a.working_interest * (a.loe_fixed + a.loe_var * oil)
+    cf["loe"] = a.working_interest * (a.loe_fixed + a.loe_var * oil + a.loe_var_gas * gas)
     cf["operating_cf"] = cf["net_revenue"] - cf["taxes"] - cf["loe"]
 
     # Economic limit: cut off after the last month with positive operating cash flow.
@@ -84,14 +86,23 @@ def cash_flow(volumes, a, oil_prices=None, gas_prices=None, include_capex=False)
 def irr(cf):
     """Annual internal rate of return (the discount rate that makes NPV zero), or NaN."""
     flows = cf["net_cf"].to_numpy()
-    if flows.min() >= 0 or flows.max() <= 0:
+    if len(flows) == 0 or flows.min() >= 0 or flows.max() <= 0:
         return np.nan
     months = np.arange(len(flows)) + 0.5
     npv = lambda r: np.sum(flows * (1 + r) ** (-months / 12))
-    try:
-        return brentq(npv, -0.99, 100)
-    except ValueError:
-        return np.nan
+    # Find a bracket by stepping out from 0%: at extreme negative rates, tiny
+    # late cash flows are magnified enormously and can flip the sign, so a
+    # single wide bracket isn't reliable.
+    up = [0.0, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1, 1.5, 2, 3, 5, 10, 25, 100]
+    down = [0.0, -0.1, -0.2, -0.35, -0.5, -0.65, -0.8, -0.9]
+    for grid in (up, down):
+        vals = [npv(r) for r in grid]
+        for (r0, v0), (r1, v1) in zip(zip(grid, vals), zip(grid[1:], vals[1:])):
+            if v0 == 0:
+                return r0
+            if np.sign(v0) != np.sign(v1):
+                return brentq(npv, min(r0, r1), max(r0, r1))
+    return np.nan
 
 
 @dataclass
@@ -118,21 +129,70 @@ def summarize(cf):
     )
 
 
-def breakeven_oil_price(volumes, a, include_capex=True, lo=1.0, hi=300.0):
-    """Flat WTI price ($/bbl) at which NPV is zero at the assumed discount rate."""
+BREAKEVEN_MAX = {"oil": 300.0, "gas": 50.0}  # $/bbl, $/MCF: above this, call it uneconomic
+
+
+def breakeven_price(volumes, a, product="oil", oil_prices=None, gas_prices=None,
+                    include_capex=True, lo=0.01, hi=None):
+    """Flat price of the main product (WTI $/bbl for oil, Henry Hub $/MCF for gas)
+    at which NPV is zero at the assumed discount rate. The other stream keeps
+    its own prices (oil_prices / gas_prices, or the flat price in `a`).
+    NaN if the well loses money even at `hi`."""
+    hi = BREAKEVEN_MAX[product] if hi is None else hi
+
     def npv_at(p):
-        return cash_flow(volumes, replace(a, oil_price=p), include_capex=include_capex)["pv"].sum()
+        if product == "oil":
+            b, kw = replace(a, oil_price=p), dict(gas_prices=gas_prices)
+        else:
+            b, kw = replace(a, gas_price=p), dict(oil_prices=oil_prices)
+        return cash_flow(volumes, b, include_capex=include_capex, **kw)["pv"].sum()
+
     if npv_at(hi) < 0:
         return np.nan
     if npv_at(lo) > 0:
         return lo
-    return brentq(npv_at, lo, hi, xtol=0.01)
+    return brentq(npv_at, lo, hi, xtol=0.01 if product == "oil" else 0.001)
+
+
+def breakeven_oil_price(volumes, a, include_capex=True, lo=1.0, hi=300.0):
+    """Flat WTI price ($/bbl) at which NPV is zero at the assumed discount rate."""
+    return breakeven_price(volumes, a, "oil", include_capex=include_capex, lo=lo, hi=hi)
+
+
+def price_deck(dates, years, prices):
+    """Monthly prices from a yearly price deck.
+
+    dates  : month start dates to price
+    years  : deck years, ascending; prices : one price per year
+    Months before the first deck year use the first price; months after the
+    last deck year stay flat at the last price (the usual convention).
+    """
+    years = np.asarray(years, int)
+    prices = np.asarray(prices, float)
+    idx = np.searchsorted(years, pd.DatetimeIndex(dates).year, side="right") - 1
+    return prices[np.clip(idx, 0, len(prices) - 1)]
+
+
+def escalated_deck(start_year, n_years, first_price, escalation):
+    """Yearly deck starting at first_price and growing escalation (fraction) per year."""
+    years = np.arange(start_year, start_year + n_years)
+    return years, first_price * (1 + escalation) ** np.arange(n_years)
+
+
+def load_fred(path, name):
+    """Monthly price series from a FRED CSV: columns date and `name`, missing values dropped."""
+    p = pd.read_csv(path)
+    p.columns = ["date", name]
+    p["date"] = pd.to_datetime(p["date"])
+    p[name] = pd.to_numeric(p[name], errors="coerce")
+    return p.dropna()
 
 
 def load_wti(path):
     """Monthly WTI spot price ($/bbl) from a FRED CSV (series MCOILWTICO)."""
-    p = pd.read_csv(path)
-    p.columns = ["date", "wti"]
-    p["date"] = pd.to_datetime(p["date"])
-    p["wti"] = pd.to_numeric(p["wti"], errors="coerce")
-    return p.dropna()
+    return load_fred(path, "wti")
+
+
+def load_henry_hub(path):
+    """Monthly Henry Hub spot gas price ($/MMBtu ≈ $/MCF) from FRED (series MHHNGSP)."""
+    return load_fred(path, "hh")
