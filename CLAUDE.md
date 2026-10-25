@@ -36,4 +36,4 @@ Architecture decisions:
 - The dashboard lives in this repo, because it is the downstream consumer of both.
 - Join wells by **API number** (14-digit, normalized to digits only). LAS headers carry it in `API` or `UWI`, and RRC data uses API numbers. Drainage area (A) and Bo aren't in either dataset, so they are user inputs on the dashboard.
 
-Petrophysics features still needed on the log reader side: pay flag and net pay cutoffs, and summary averages over the pay interval.
+The log reader provides `welllog.petrophysics.pay_flag` (cutoffs: VSH ≤ 0.4, PHI ≥ 0.08, SW ≤ 0.5; missing data never counts as pay) and `welllog.volumetrics.net_pay_summary` / `ooip`. Use these rather than reimplementing them.
