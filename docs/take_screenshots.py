@@ -43,10 +43,23 @@ def main():
         page.screenshot(path=OUT / "summary.png")
 
         for tab, name in [("1 · Well log", "well_log"), ("3 · Production forecast", "forecast"),
-                          ("4 · Economics", "economics")]:
+                          ("4 · Economics", "economics"), ("5 · Uncertainty", "uncertainty")]:
             page.get_by_role("tab", name=tab).click()
             settle(page, 2500)
+            if name == "uncertainty":  # scroll past the input table to the results and charts
+                page.mouse.move(900, 600)
+                page.mouse.wheel(0, 520)
+                settle(page, 800)
             page.screenshot(path=OUT / f"{name}.png")
+
+        # A field type curve: a horizontal tight-oil prospect shaped like the bundled Spraberry wells
+        page.get_by_text("Horizontal oil (tight)", exact=True).click()
+        settle(page)
+        page.get_by_text("Prospect: field type curve", exact=True).click()
+        settle(page)
+        page.get_by_role("tab", name="3 · Production forecast").click()
+        settle(page, 2500)
+        page.screenshot(path=OUT / "type_curve.png")
         browser.close()
     print("Saved", sorted(f.name for f in OUT.glob("*.png")))
 

@@ -69,6 +69,16 @@ def test_uncertainty_tab(mode):
         assert any(m.label.startswith("PDP value, P50") for m in at.metric)
 
 
+@pytest.mark.parametrize("mode", MODES)
+def test_pdf_report(mode):
+    source = {MODES[0]: None, MODES[3]: "Example field (bundled)"}.get(mode, "Example well")
+    at = run("Horizontal oil (tight)", mode, source=source)
+    next(b for b in at.button if b.label == "Create PDF report").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    pdf = at.session_state["pdf_report"][1]
+    assert pdf[:5] == b"%PDF-" and len(pdf) > 50_000
+
+
 def test_gas_units():
     at = run("Horizontal gas (shale)", MODES[2], source="Example well")
     assert not at.exception

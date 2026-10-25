@@ -6,12 +6,13 @@ dollars. Upload a LAS well log and it works out:
 1. **Well log** → net pay, porosity, water saturation (via the
    [PETE Python Log Reader](../pete-python-log-reader))
 2. **Volumetrics** → original oil in place (OOIP) or gas in place (OGIP)
-3. **Production forecast** → EUR, in one of three modes:
+3. **Production forecast** → EUR, in one of four modes:
 
    | Mode | Production data | How the forecast is built |
    |---|---|---|
    | **Prospect: typical assumptions** | None | EUR = volume in place × assumed recovery factor, with a typical decline shape for the well type |
    | **Prospect: decline from an analog** | A *similar* well | Same EUR, but the decline shape (b, first-year decline) and the other stream's ratio (gas-oil ratio or condensate yield) come from the analog's actual production. Your log sets the size; the analog sets the shape. |
+   | **Prospect: field type curve** | *Many* wells in a field | Same EUR, shaped like the field's P50 type curve: the wells are lined up at their peak month and the median rate is taken each month, so one odd neighbor can't skew the shape. P10/P90 profiles show the spread. |
    | **Producing well** | The *same* well | Arps decline fitted to the well's own history. The recovery factor (EUR ÷ volume in place) becomes a cross-check between the log and the production. |
 
    Production is found from the log's **API number**: Texas wells (42-...) from
@@ -22,6 +23,12 @@ dollars. Upload a LAS well log and it works out:
    Henry Hub for gas wells), and for producing wells, the remaining (PDP) value
    against an asking price. Forecast prices come from a flat, escalating, or
    custom yearly price deck.
+5. **Uncertainty** → Monte Carlo: each uncertain input gets a low / most likely /
+   high range and the appraisal runs thousands of times, giving P90 / P50 / P10
+   EUR and NPV, the chance the NPV is positive, and a tornado chart of what
+   matters most.
+6. **PDF report** → one click on the Summary tab downloads the whole appraisal:
+   key results, cross-check, log tracks, forecast, economics and uncertainty.
 
 Four well types set the starting assumptions (drainage area, recovery factor
 range, decline shape, costs): vertical conventional oil, horizontal tight oil,
@@ -54,10 +61,12 @@ python -m pytest
 ```
 
 Unit tests check the decline math against known Arps curves, the cash flow
-against hand calculations, the IRR and breakeven solvers, price decks, the
-recovery factor verdicts, and the RRC page parsing (against saved copies of
-real RRC pages in `tests/fixtures/`). `tests/test_app.py` runs the whole
-dashboard headlessly for every well type and mode. No test uses the network.
+against hand calculations, the IRR and breakeven solvers, price decks, type
+curves (recovering a known shared decline), the vectorized Monte Carlo cash flow
+(against the regular one), the PDF builder, the recovery factor verdicts, and the
+RRC page parsing (against saved copies of real RRC pages in `tests/fixtures/`).
+`tests/test_app.py` runs the whole dashboard headlessly for every well type and
+mode, including the uncertainty tab and the PDF report. No test uses the network.
 
 ## Data
 
@@ -107,6 +116,16 @@ count). Raising the drainage area to about 50 acres brings it into the typical
 range. This is the kind of reconciliation between log and production the
 dashboard is built for.
 
+**As a prospect.** Appraised before drilling (mode **Prospect: typical
+assumptions**), the same log gives P90 / P50 / P10 EUR of 90 / 131 / 181 Mbbl and
+an 86% chance of a positive NPV, with recovery factor and drainage area the
+biggest drivers. The well went on to make 203 Mbbl, above the P10: consistent
+with the cross-check's hint that it drains more rock than a typical well.
+
+![Uncertainty: P90/P50/P10, NPV distribution and tornado](docs/screenshots/uncertainty.png)
+
+![A horizontal prospect shaped like the field's P50 type curve](docs/screenshots/type_curve.png)
+
 ## Method
 
 **Evaluating the log** (`app.py`, using the log reader)
@@ -122,7 +141,8 @@ dashboard is built for.
 - Oil is reported per lease. If the lease has several wellbores, the dashboard says
   so and divides lease volumes equally between them (editable).
 - Kansas API numbers (state 15) go to the KGS instead (`production/kgs.py`): the
-  KGS LAS index links the well to its oil lease. Kansas reports oil **sales**
+  KGS lease index (downloaded by `fetch_data.py`) links the well to its oil lease.
+  Kansas reports oil **sales**
   (truckloads sold), not production, so monthly volumes are lumpy; each year's
   sales are spread evenly over that year's producing months before fitting.
   Kansas oil leases report no casinghead gas.
@@ -136,6 +156,16 @@ dashboard is built for.
   place, i.e. its log. The recovery factor stays a user input.
 - Analog ratios are lifetime averages; an oil well's late-life gas-oil ratio rises
   as reservoir pressure falls and would overstate a new well's gas.
+
+**Field type curves** (`production/typecurve.py`)
+- Wells come from the bundled example fields or any Texas field: the RRC field
+  lease list is sampled for recent wells still producing (skipping disposal,
+  brine and injection wells), and each kept well needs 24+ months after its peak.
+- Each well is aligned at its peak month. At each month, the 90th / 50th / 10th
+  percentile rate across the wells gives the P10 / P50 / P90 profiles; the profile
+  stops when fewer than 30% of the wells (and fewer than 3) still report.
+- An Arps curve fitted to the P50 profile sets the new well's shape. Each well's
+  own fit gives the spread of field well EURs.
 
 **Decline curves** (`production/decline.py`)
 - Fitted to the main product: oil rate (bbl/day) for oil wells, gas rate (Mcf/day)
@@ -158,6 +188,28 @@ dashboard is built for.
 - Default assumptions (25% royalty, Texas severance 4.6% oil / 7.5% gas, LOE and
   capex by well type) are typical values, all editable in the dashboard.
 
+**Uncertainty** (`production/uncertainty.py`)
+- Triangular distributions (low, most likely, high) for each input, sampled
+  independently, 1,000-5,000 runs with a fixed seed (the same inputs always give
+  the same answer).
+- Prospects vary drainage area, net pay, porosity, water saturation, Bo or Bg,
+  recovery factor, first-year prices (scaling the whole deck), capex and fixed LOE.
+  Producing wells vary remaining production (± % of the forecast), prices and
+  LOE; their produced months keep actual volumes and prices. The volumetric inputs
+  also vary, which turns the recovery factor cross-check into a range.
+- All runs are computed at once as a matrix with the same cash flow rules as
+  `economics.cash_flow` (a test checks they match). The decline shape is held
+  fixed, so each run's EUR rescales the same type curve.
+- P90 is the low case (90% of runs do at least this well), P10 the high case.
+- The tornado moves each input to its low and high value with the others at most
+  likely.
+
+**PDF report** (`production/report.py`)
+- The dashboard describes the report as data (sections of text, tables and chart
+  specs); the module lays it out with fpdf2 and draws the charts with matplotlib,
+  with no Streamlit dependency. The DejaVu font that ships with matplotlib handles
+  symbols like φ and ≤.
+
 **Cross-check** (`production/appraisal.py`)
 - Each well type has a typical and a plausible recovery factor range, e.g. tight
   oil 3–15% (plausible 1–30%), conventional gas 50–85% (plausible 30–95%).
@@ -169,8 +221,13 @@ dashboard is built for.
 - RRC oil volumes are per lease; splitting them equally between wellbores is an
   approximation (wells on a lease rarely produce equally).
 - The API lookup covers Texas (state code 42) and Kansas oil wells (15). Kansas
-  wells must have a LAS file in the KGS index, and Kansas data is fetched live, not
-  stored: KGS licenses the monthly volumes for research use, not redistribution.
+  data is fetched live, not stored: KGS licenses the monthly volumes for research
+  use, not redistribution.
+- Field type curves sample recent wells by lease number; RRC lease numbers rise
+  over time but don't record completion design, so wells of different designs can
+  mix. Oil type curves inherit the lease-level reporting of RRC oil volumes.
+- The Monte Carlo samples inputs independently (no correlations, e.g. between
+  porosity and water saturation) and holds the decline shape fixed.
 - Spreading Kansas sales evenly within each year smooths out real month-to-month
   changes.
 - The price deck is entered by hand (flat, escalating or custom); there is no

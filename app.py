@@ -13,6 +13,7 @@ optional:
 Run from the project folder with:  streamlit run app.py
 """
 
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from welllog.petrophysics import archie_sw, density_porosity, pay_flag, shale_vo
 from welllog.volumetrics import net_pay_summary, ogip, ooip
 
 from production import kgs
+from production.report import build_pdf
 from production.typecurve import build_type_curve, fetch_field_wells
 from production.uncertainty import Range, npv_paths, percentiles, scaled_forecasts, tornado, unit_volumes
 from production.appraisal import (PRODUCTS, forecast_volumes, full_volumes, priced_history,
@@ -292,7 +294,7 @@ with st.sidebar:
     mode = st.radio("Appraisal mode", [TYPICAL, ANALOG, FIELD, OWN], label_visibility="collapsed")
     st.caption(MODE_HELP[mode])
 
-    lease, lease_label, n_wells = None, "", 1
+    lease, lease_label, n_wells, prod_origin = None, "", 1, "RRC"
     prod_source, tc, tc_label = None, None, ""
     if mode == FIELD:
         st.header("4 · Field wells")
@@ -374,6 +376,7 @@ with st.sidebar:
                     st.caption(f"API {w['api']} → {w['lease_name']}{well_txt}, KGS oil lease "
                                f"{w['lease_kid']}, {w['county']} County, Kansas")
                     lease, n_wells = kgs_fetch_cached(w["lease_kid"])
+                    prod_origin = "KGS"
                     st.caption("Kansas reports oil sales (truckloads), not production: each year's sales "
                                "are spread evenly over its producing months. No casinghead gas is reported.")
             except ValueError as e:
@@ -1052,9 +1055,9 @@ with unc_tab:
             col.metric(f"NPV @ {rate_pct}, {p}", money(mc["npv"][p]))
         if has_prod:
             rf_p = mc["rf"]
-            m[3].metric("Recovery factor range", f"{rf_p['P90']:.0%} - {rf_p['P50']:.0%} - {rf_p['P10']:.0%}",
-                        help="P90 - P50 - P10 of EUR ÷ volume in place across the simulations. Wide when the "
-                             "log inputs are uncertain.")
+            m[3].metric("Recovery factor, P90-P10", f"{rf_p['P90']:.0%} - {rf_p['P10']:.0%}",
+                        help=f"EUR ÷ volume in place across the simulations (P50 {rf_p['P50']:.0%}). Wide when "
+                             "the log inputs are uncertain.")
             m = st.columns(4)
             for col, p in zip(m, ("P90", "P50", "P10")):
                 col.metric(f"PDP value, {p}", money(mc["pdp"][p]))
@@ -1114,15 +1117,20 @@ with summary_tab:
         m[3].metric("Recovery factor", f"{rf:.1%}" if not np.isnan(rf) else "n/a")
         (lo, hi), (tlo, thi) = wt["rf_plausible"], wt["rf_typical"]
         if np.isnan(rf) or rf > hi or rf < lo:
+            cross = ("fail", f"Cross-check failed. {verdict}")
             st.error(f"**Cross-check failed.** {verdict}", icon="⛔")
         elif tlo <= rf <= thi:
+            cross = ("pass", f"Cross-check passed. {verdict}")
             st.success(f"**Cross-check passed.** {verdict}", icon="✅")
         else:
+            cross = ("review", f"Cross-check: review. {verdict}")
             st.warning(f"**Cross-check: review.** {verdict}", icon="⚠️")
     else:
         m[3].metric("Recovery factor (assumed)", f"{rf_assumed:.0%}")
         shape = (f"the decline shape of analog {lease_label}" if use_analog
                  else f"the P50 type curve of {tc_label}" if use_tc else "a typical decline shape")
+        cross = ("info", f"EUR is {U['in_place'].lower()} × an assumed {rf_assumed:.0%} recovery factor, "
+                         f"produced with {shape}.")
         st.info(f"EUR is {U['in_place'].lower()} × an assumed {rf_assumed:.0%} recovery factor, produced "
                 f"with {shape}. Once the well has its own production, switch to 'Producing well' mode "
                 "to test these assumptions against real performance.", icon="ℹ️")
@@ -1145,3 +1153,190 @@ with summary_tab:
     if source == SRC_SAMPLE:
         st.info("The synthetic test well is 12 ft thick with 3.5 ft of pay, so it holds very little. "
                 "Pick the real Kansas example or upload a LAS file to appraise a real well.", icon="ℹ️")
+
+    # ------------------------------------------------------------ PDF report
+    def make_report():
+        """Everything on the tabs, as a report description for production.report.build_pdf."""
+        well_name = header.get("WELL", "unnamed well")
+        mode_text = (f"producing well, own production ({lease_label})" if has_prod
+                     else f"prospect, decline from analog {lease_label}" if use_analog
+                     else f"prospect, field type curve ({tc_label})" if use_tc else "prospect, typical assumptions")
+        vol_unit = "Mbbl" if product == "oil" else "MMcf"
+        headline = [("Net pay (log)", f"{pay['net_pay_ft']:.1f} ft"), (U["in_place"], volume(in_place, product)),
+                    ("EUR", volume(well_eur, product))]
+        headline.append(("Recovery factor", f"{rf:.1%}") if has_prod else
+                        ("Recovery factor (assumed)", f"{rf_assumed:.0%}"))
+        headline += [(f"NPV @ {rate_pct}", money(full.npv)),
+                     ("IRR", f"{full.irr:.0%}" if not np.isnan(full.irr) else "n/a"),
+                     ("Payout", f"{full.payout_months:.0f} months" if not np.isnan(full.payout_months) else "never"),
+                     (be_label, be_text)]
+        if has_prod:
+            headline.append((f"Remaining (PDP) value @ {rate_pct}", money(pdp.npv)))
+        if mc:
+            headline += [("EUR P90 / P50 / P10", " / ".join(volume(mc["eur"][p], product) for p in ("P90", "P50", "P10"))),
+                         ("NPV P90 / P50 / P10", " / ".join(money(mc["npv"][p]) for p in ("P90", "P50", "P10"))),
+                         ("Chance NPV > 0", f"{mc['chance']:.0%}")]
+
+        log_section = {
+            "heading": "1. Well log",
+            "text": [f"Zone evaluated: {z_top:,.0f} - {z_base:,.0f} ft ({lithology.lower()}). A depth counts as pay "
+                     f"when shale volume ≤ {vsh_max:.2f}, porosity ≥ {phi_min:.2f} and water saturation ≤ {sw_max:.2f}; "
+                     "depths with missing data never count."],
+            "tables": [
+                {"title": "Interpretation inputs", "header": ["Input", "Value"], "widths": (55, 45), "rows": [
+                    ["Curves (GR / density / deep resistivity)", f"{gr_col} / {rhob_col} / {rt_col}"],
+                    ["GR clean / shale (API)", f"{gr_clean:g} / {gr_shale:g}"],
+                    ["Matrix / fluid density (g/cc)", f"{rho_matrix:.2f} / {rho_fluid:.2f}"],
+                    ["Rw (ohm-m), Archie a=1, m=2, n=2", f"{rw:.3f}"]]},
+                {"title": "Results over the pay", "header": ["Result", "Value"], "widths": (55, 45), "rows": [
+                    ["Gross / net pay", f"{pay['gross_ft']:.1f} ft / {pay['net_pay_ft']:.1f} ft"],
+                    ["Net-to-gross", f"{pay['net_to_gross']:.0%}"],
+                    ["Average porosity", f"{pay['avg_phi']:.1%}" if pay["net_pay_ft"] else "n/a"],
+                    ["Average water saturation (pore-volume weighted)", f"{pay['avg_sw']:.1%}" if pay["net_pay_ft"] else "n/a"]]}],
+            "charts": [{"type": "log_tracks", "depth": log["DEPT"].to_numpy(), "pay": log["PAY"].to_numpy(),
+                        "title": "Log tracks (pay shaded green)",
+                        "tracks": [{"x": log[gr_col].to_numpy(), "label": "GR (API)"},
+                                   {"x": log[rt_col].to_numpy(), "label": "Rt (ohm-m)", "logx": True},
+                                   {"x": log["PHI"].to_numpy(), "label": "Porosity"},
+                                   {"x": log["SW"].to_numpy(), "label": "Water sat."}]}],
+        }
+        vol_section = {
+            "heading": "2. Volumetrics", "text": [U["formula"]],
+            "tables": [{"header": ["Input", "Value"], "widths": (55, 45), "rows": [
+                ["Drainage area, A", f"{area:g} acres"], ["Net pay, h", f"{pay['net_pay_ft']:.1f} ft"],
+                ["Porosity, φ", f"{pay['avg_phi']:.1%}" if pay["net_pay_ft"] else "n/a"],
+                ["Water saturation, Sw", f"{pay['avg_sw']:.1%}" if pay["net_pay_ft"] else "n/a"],
+                [U["fvf_label"], f"{fvf:g}"], [U["in_place"], volume(in_place, product)]]}],
+        }
+
+        # Production forecast chart and table
+        d_term_n = nominal_from_effective_annual(d_term)
+        if has_prod:
+            t_all = np.arange(0, int(fc["t"].max() if len(fc) else hist["t"].max()) + 1)
+            fc_series = [
+                {"x": lease["date"], "y": lease[P["rate"]].where(lease[P["rate"]] > 0), "label": "Actual",
+                 "style": "scatter", "size": 8},
+                {"x": [fit.t0 + pd.DateOffset(months=int(t)) for t in t_all], "y": fit.rate(t_all, d_term_n),
+                 "label": f"{model.capitalize()} fit and forecast", "color": ORANGE}]
+            fc_chart = {"type": "xy", "logy": True, "series": fc_series, "xlabel": "",
+                        "ylabel": f"{product.capitalize()} rate ({rate_unit})", "title": "Decline curve"}
+            fc_rows = [["Model", model], ["Fit from", hist["date"].iloc[0].strftime("%b %Y")],
+                       ["qi", f"{fit.qi:,.0f} {rate_unit}"], ["b-factor", f"{fit.b:.2f}"],
+                       ["First-year decline", f"{fit.di_annual_eff:.0%}"], ["Terminal decline", f"{d_term:.0%}/yr"],
+                       ["Produced to date", volume(cum, product)], ["Remaining (forecast)", volume(well_eur - cum, product)],
+                       ["EUR", volume(well_eur, product)]]
+            fc_text = [f"Arps {model} decline fitted to this well's own production ({lease_label}), with a robust "
+                       "loss on log rate; zero and unreported months excluded."]
+        else:
+            fc_series = []
+            if use_analog:
+                fc_series += [{"x": analog_hist["t"], "y": analog_hist["q"], "label": f"Analog actual ({lease_label})",
+                               "style": "scatter", "size": 8}]
+            if use_tc:
+                fc_series += [{"x": tc.profile["t"], "y": tc.profile[c], "label": lbl, "style": st_,
+                               "width": w} for c, lbl, st_, w in [("p10", "Field P10", "dash", 1.2),
+                                                                 ("p50", "Field P50 type curve", "line", 2.2),
+                                                                 ("p90", "Field P90", "dash", 1.2)]]
+            if len(fc):
+                fc_series.append({"x": fc["t"], "y": fc["q"], "label": "Your well (forecast)", "color": ORANGE,
+                                  "width": 2.4})
+            fc_chart = {"type": "xy", "logy": True, "series": fc_series, "ylabel": f"Rate ({rate_unit})",
+                        "xlabel": "Months since peak" if use_tc else "Months on production", "title": "Forecast"}
+            fc_rows = [["EUR = volume in place × recovery factor", f"{volume(in_place, product)} × {rf_assumed:.0%}"],
+                       ["Decline shape", ("analog " + lease_label) if use_analog else
+                        ("P50 type curve, " + tc_label) if use_tc else "typical for the well type"],
+                       ["b-factor / first-year decline", f"{b:.2f} / {d_eff:.0%}"],
+                       ["Terminal decline / cutoff", f"{d_term:.0%}/yr / {q_limit:g} {rate_unit}"],
+                       ["Initial rate", f"{fit.qi:,.0f} {rate_unit}" if len(fc) else "n/a"],
+                       ["Producing life", f"{len(fc) / 12:.1f} years"], ["EUR", volume(well_eur, product)]]
+            fc_text = ["No production history is used for this well: the forecast recovers the volume in place × "
+                       "recovery factor before falling below the cutoff rate."]
+            if use_tc:
+                q = tc.eurs.quantile([0.1, 0.5, 0.9])
+                fc_text.append(f"Type curve from {tc.n_wells} wells lined up at their peak month. Field well EUR "
+                               f"P90 / P50 / P10: {volume(q[0.1], product)} / {volume(q[0.5], product)} / "
+                               f"{volume(q[0.9], product)}.")
+        fc_section = {"heading": "3. Production forecast", "new_page": True, "text": fc_text,
+                      "tables": [{"header": ["Item", "Value"], "widths": (55, 45), "rows": fc_rows}],
+                      "charts": [fc_chart] if fc_chart["series"] else []}
+
+        econ_rows = [["Price outlook", f"{deck_kind}: {U['price']} from ${main_now:,.2f}"],
+                     ["WTI / Henry Hub, first forecast year", f"${oil_deck[0]:,.2f}/bbl / ${gas_deck[0]:,.2f}/MCF"],
+                     ["Oil differential / gas realized",
+                      f"{'-' if a.oil_diff < 0 else '+'}${abs(a.oil_diff):.2f}/bbl / {a.gas_diff_pct:.0%} of Henry Hub"],
+                     ["Working interest / royalty (NRI)", f"{a.working_interest:.0%} / {a.royalty:.0%} ({a.nri:.1%})"],
+                     ["Severance oil / gas, ad valorem", f"{a.severance_oil:.1%} / {a.severance_gas:.1%}, {a.ad_valorem:.1%}"],
+                     ["LOE", f"${a.loe_fixed:,.0f}/month + ${a.loe_var:g}/bbl + ${a.loe_var_gas:g}/Mcf"],
+                     ["Capex", f"${a.capex:,.0f}"], ["Discount rate", f"{a.discount_rate:.0%}"]]
+        res_rows = [[f"NPV @ {rate_pct}", money(full.npv)], ["Undiscounted net cash", money(full.undiscounted)],
+                    ["IRR", f"{full.irr:.0%}" if not np.isnan(full.irr) else "n/a"],
+                    ["Payout", f"{full.payout_months:.0f} months" if not np.isnan(full.payout_months) else "never"],
+                    [be_label, be_text]]
+        if has_prod:
+            res_rows.append([f"Remaining (PDP) value @ {rate_pct}", money(pdp.npv)])
+        econ_section = {
+            "heading": "4. Economics", "new_page": True,
+            "text": ["Monthly cash flow: net revenue after royalty, minus severance and ad valorem taxes, LOE and "
+                     "capex, discounted mid-month; production stops at the economic limit."
+                     + (" Months already produced use historical WTI and Henry Hub." if has_prod else "")],
+            "tables": [{"title": "Assumptions", "header": ["Item", "Value"], "widths": (55, 45), "rows": econ_rows},
+                       {"title": "Results", "header": ["Result", "Value"], "widths": (55, 45), "rows": res_rows}],
+            "charts": [{"type": "bar", "x": annual["year"], "y": annual["net_cf"] / 1e6, "ylabel": "Net cash flow ($M)",
+                        "title": "Annual net cash flow (full-cycle)"}],
+        }
+        sections = [log_section, vol_section, fc_section, econ_section]
+        if mc:
+            t = mc["table"]
+            sections.append({
+                "heading": "5. Uncertainty", "new_page": True,
+                "text": [f"{mc['n']:,} Monte Carlo simulations with triangular distributions (low, most likely, high), "
+                         "sampled independently; decline shape held fixed. P90 is the low case (90% chance of "
+                         "exceeding), P10 the high case."],
+                "tables": [
+                    {"title": "Input ranges", "header": ["Input", "Low", "Most likely", "High"], "widths": (46, 18, 18, 18),
+                     "rows": [[r["Input"], f"{r['Low']:.4g}", f"{r['Most likely']:.4g}", f"{r['High']:.4g}"]
+                              for _, r in t.iterrows()]},
+                    {"title": "Results", "header": ["Result", "P90", "P50", "P10"], "widths": (46, 18, 18, 18),
+                     "rows": [["EUR"] + [volume(mc["eur"][p], product) for p in ("P90", "P50", "P10")],
+                              [f"NPV @ {rate_pct}"] + [money(mc["npv"][p]) for p in ("P90", "P50", "P10")]]
+                     + ([["PDP value"] + [money(mc["pdp"][p]) for p in ("P90", "P50", "P10")],
+                         ["Recovery factor"] + [f"{mc['rf'][p]:.0%}" for p in ("P90", "P50", "P10")]] if has_prod else [])
+                     + [["Chance NPV > 0", f"{mc['chance']:.0%}", "", ""]]}],
+                "charts": [{"type": "row", "charts": [
+                    {"type": "hist", "samples": mc["npv_samples"] / 1e6, "xlabel": f"NPV @ {rate_pct} ($M)",
+                     "marks": {p: mc["npv"][p] / 1e6 for p in ("P90", "P50", "P10")}, "title": "NPV distribution"},
+                    {"type": "tornado", "labels": [s.split(" (")[0] for s in mc["tornado"]["input"]],
+                     "low": (mc["tornado"]["low"] - mc["base_npv"]) / 1e6,
+                     "high": (mc["tornado"]["high"] - mc["base_npv"]) / 1e6,
+                     "xlabel": "Change in NPV ($M)", "title": "What moves NPV most"}]}],
+            })
+        sources = ["Petrophysics and volumetrics: PETE Python Log Reader (Archie water saturation, density porosity, "
+                   "linear gamma-ray shale volume)."]
+        if source == SRC_REAL:
+            sources.append(LOG_PRESETS[SRC_REAL]["note"])
+        if lease is not None and prod_origin == "KGS":
+            sources.append("Production: Kansas Geological Survey (oil sales, spread evenly within each year).")
+        elif lease is not None or use_tc:
+            sources.append("Production: Texas Railroad Commission Production Data Query (oil by lease, gas by well).")
+        sources += ["Historical prices: FRED, WTI (MCOILWTICO) and Henry Hub (MHHNGSP).",
+                    "Screening-level estimate from public data and stated assumptions; not a reserves report."]
+        return {
+            "title": f"Upstream appraisal: {well_name}",
+            "subtitle": f"{well_type} · {mode_text}" + (f" · API {api}" if api else ""),
+            "generated": f"Generated {pd.Timestamp.today():%B %d, %Y} with the PETE Production Analyzer",
+            "headline": headline, "verdict": cross, "sections": sections, "sources": sources,
+            "footer": f"{well_name} · upstream appraisal",
+        }
+
+    st.markdown("#### Report")
+    report_sig = (well_type, mode, money(full.npv), volume(well_eur, product), volume(in_place, product),
+                  mc["npv"]["P50"] if mc else None, deck_kind)
+    if st.button("Create PDF report", help="A PDF of every tab: inputs, results, cross-check, charts and uncertainty."):
+        with st.spinner("Building the PDF..."):
+            st.session_state["pdf_report"] = (report_sig, build_pdf(make_report()))
+    saved = st.session_state.get("pdf_report")
+    if saved and saved[0] == report_sig:
+        st.download_button("Download PDF report", saved[1], mime="application/pdf", type="primary",
+                           file_name=f"appraisal_{re.sub(r'[^A-Za-z0-9]+', '_', header.get('WELL', 'well')).strip('_')}.pdf")
+    elif saved:
+        st.caption("Inputs changed since the last report; create it again to include them.")
