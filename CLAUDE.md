@@ -4,7 +4,7 @@ Oil & gas production data analyzer and valuation dashboard.
 
 ## Goal
 
-1. Pull public production data (Texas Railroad Commission) for specific wells, leases, or basins.
+1. Pull public production data (Texas Railroad Commission; Kansas Geological Survey for Kansas oil wells) for specific wells, leases, or basins.
 2. Fit Arps decline curves (exponential, hyperbolic, harmonic) and forecast estimated ultimate recovery (EUR).
 3. Apply a discounted cash flow (DCF) model against historical and forward oil/gas prices to judge whether an asset or energy equity looks undervalued.
 4. Present results in an interactive dashboard.
@@ -42,6 +42,7 @@ Architecture decisions:
 
 - The LAS log is the primary input. Four well types (vertical/horizontal × oil/gas) set defaults, including the recovery factor ranges for the cross-check. Three appraisal modes (sidebar): **typical** (no production; EUR = volume in place × assumed RF via `decline.type_curve` with well-type default shape), **analog** (a similar well supplies b, first-year decline and the lifetime ratio of the other stream; the log still sets size; RF stays an input because an analog has no volume in place), **producing well** (Arps fit to the same well's history; RF = EUR / volume in place becomes a cross-check). Using a different well's production in producing-well mode makes the cross-check meaningless.
 - `production/rrc.py`: PDQ fetchers (PDQ has no API, so they replay the website's form flow): `fetch_lease` (any oil lease or gas well by number + district, used by the dashboard) and `PDQSession` (field-based, used by `fetch_data.py`); Wellbore Query helpers `lookup_api`, `lease_wells`. `clean_production` turns "NO RPT" into missing, drops trailing unreported months, adds daily rates. Parsers are tested against saved pages in `tests/fixtures/`.
+- `production/kgs.py`: Kansas (API state 15). `lookup_api` (via the KGS LAS index → well page → oil lease KID), `fetch_lease` (monthly sales file), `spread_sales` (Kansas reports lumpy oil *sales*; spreads each year evenly over producing months into the same columns as `clean_production`). KGS monthly volumes are IHS-licensed: fetch live, never commit them; tests use made-up data in the KGS format.
 - `production/decline.py`: Arps fits (robust soft-L1 loss on log rate) on a generic rate column `q`; forecasts return `q` and `volume`. Modified hyperbolic forecast, EUR, `type_curve` for wells with no history.
 - `production/economics.py`: monthly DCF, IRR (bracket searched outward from 0%), breakeven on either product's price, yearly price decks, FRED price loaders.
 - `production/appraisal.py`: history + forecast volumes for either product, historical-then-deck pricing, recovery factor check.

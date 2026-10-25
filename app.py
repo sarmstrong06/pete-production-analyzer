@@ -27,6 +27,7 @@ import welllog
 from welllog.petrophysics import archie_sw, density_porosity, pay_flag, shale_volume
 from welllog.volumetrics import net_pay_summary, ogip, ooip
 
+from production import kgs
 from production.appraisal import (PRODUCTS, forecast_volumes, full_volumes, priced_history,
                                   recovery_factor_check, secondary_ratio)
 from production.decline import (MODELS, eur, fit_arps, forecast,
@@ -168,6 +169,26 @@ def lookup_cached(api8):
     return lookup_api(api8)
 
 
+@st.cache_data(ttl=86400, show_spinner="Looking up the API number at the Kansas Geological Survey...")
+def kgs_lookup_cached(api_digits):
+    return kgs.lookup_api(api_digits)
+
+
+@st.cache_data(ttl=86400, show_spinner="Fetching production from the Kansas Geological Survey...")
+def kgs_fetch_cached(lease_kid):
+    sales = kgs.fetch_lease(lease_kid)
+    return kgs.spread_sales(sales), kgs.wells_on_lease(sales)
+
+
+def api_target(text):
+    """('TX', 8-digit API) or ('KS', full digits) for a Texas or Kansas API number, else None."""
+    parts = kgs.split_api(text)
+    if parts and parts[0] == "15":
+        return "KS", "".join(parts)
+    api8 = normalize_api(text)
+    return ("TX", api8) if api8 else None
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def well_count(lease_no, district, kind):
     try:
@@ -241,7 +262,7 @@ with st.sidebar:
         st.header("4 · " + ("Analog well" if mode == ANALOG else "This well's production"))
         sources = [EXAMPLE, BY_API, BY_LEASE]
         # A producing well's own log usually carries its API number: look that up first
-        default_src = BY_API if mode == OWN and normalize_api(api) else EXAMPLE
+        default_src = BY_API if mode == OWN and api_target(api) else EXAMPLE
         prod_source = st.radio("Production source", sources, index=sources.index(default_src),
                                label_visibility="collapsed", key=f"src_{mode}")
 
@@ -256,17 +277,36 @@ with st.sidebar:
         with st.form("api_form"):
             api_in = st.text_input("API number", value=api if mode == OWN else "",
                                    placeholder="e.g. 42-227-40326",
-                                   help="Read from the log header (API or UWI) when present.")
-            submitted = st.form_submit_button("Look up at the RRC", width="stretch")
+                                   help="Texas (42-...) or Kansas (15-...). Read from the log header "
+                                        "(API or UWI) when present.")
+            submitted = st.form_submit_button("Look up production", width="stretch")
         if submitted:
-            api8 = normalize_api(api_in)
-            if api8:
-                st.session_state["api_lookup"] = api8
+            target = api_target(api_in)
+            if target:
+                st.session_state["api_lookup"] = target
             else:
-                st.error("Enter a Texas API number: 42-CCC-WWWWW (state 42, county, well).")
-        if "api_lookup" in st.session_state:
+                st.error("Enter a Texas (42-CCC-WWWWW) or Kansas (15-CCC-WWWWW) API number.")
+        target = st.session_state.get("api_lookup")
+        if target and target[0] == "KS":
             try:
-                found = lookup_cached(st.session_state["api_lookup"])
+                found = kgs_lookup_cached(target[1])
+                if not found:
+                    st.error("The KGS has no oil lease for that API number (the well may be a dry hole "
+                             "or a gas well, or have no LAS file at the KGS).")
+                else:
+                    w = found[0]
+                    st.caption(f"API {w['api']} → {w['lease_name']} #{w['well']}, KGS oil lease "
+                               f"{w['lease_kid']}, {w['county']} County, Kansas")
+                    lease, n_wells = kgs_fetch_cached(w["lease_kid"])
+                    st.caption("Kansas reports oil sales (truckloads), not production: each year's sales "
+                               "are spread evenly over its producing months. No casinghead gas is reported.")
+            except ValueError as e:
+                st.error(str(e))
+            except Exception as e:  # network trouble, site changes
+                st.error(f"Couldn't reach the Kansas Geological Survey: {e}")
+        elif target:
+            try:
+                found = lookup_cached(target[1])
                 if not found:
                     st.error("The RRC has no wellbore with that API number.")
                 else:
@@ -328,7 +368,7 @@ with st.sidebar:
                        "the cross-check is meaningless. Looking it up by API number avoids mix-ups.")
 
     if lease is not None and mode == OWN and n_wells > 1:
-        st.warning(f"This oil lease has {n_wells} wellbores. The RRC reports oil for the whole lease, "
+        st.warning(f"This oil lease has {n_wells} wells. Oil is reported for the whole lease, "
                    "so its production may come from several wells.", icon="⚠️")
         share = st.number_input("Wells sharing the production", min_value=1, value=n_wells, step=1,
                                 help="Lease volumes are divided equally between this many wells. "
