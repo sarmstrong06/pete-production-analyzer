@@ -4,4 +4,6 @@ scipy
 matplotlib
 plotly
 streamlit
+requests
+lasio
 -e "../PETE Python Log Reader"

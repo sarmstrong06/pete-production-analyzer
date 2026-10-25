@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "wsl",
+      "runtimeArgs": ["-d", "Ubuntu", "--", "bash", "-lc", "cd '/mnt/c/Users/armst/Documents/PETE Production Analyzer' && source ~/.venvs/well-log/bin/activate && streamlit run app.py --server.headless true --server.port 8501"],
+      "port": 8501
+    }
+  ]
+}
