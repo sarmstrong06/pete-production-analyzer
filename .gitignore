@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+output/
+# Raw downloads from the Railroad Commission can be large; keep them out of git
+data/raw/
