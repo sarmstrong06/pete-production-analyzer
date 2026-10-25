@@ -23,7 +23,7 @@ Python, Pandas, NumPy, SciPy (curve fitting), Matplotlib/Plotly.
 
 End goal: one dashboard covering the appraisal workflow, from rock to dollars:
 
-1. **Logs** (`..\PETE Python Log Reader`, package `welllog`): VSH, PHI, SW, net pay
+1. **Logs** (`../pete-python-log-reader`, package `welllog`): VSH, PHI, SW, net pay
 2. **Volumetrics**: OOIP = 7758 × A × h × φ × (1 − Sw) / Bo (STB)
 3. **Production** (this project): Arps fit and EUR
 4. **Cross-check**: recovery factor = EUR / OOIP (flag values outside a plausible range)
@@ -32,7 +32,7 @@ End goal: one dashboard covering the appraisal workflow, from rock to dollars:
 Architecture decisions:
 
 - Keep two separate repos. The log reader stays the source of truth for petrophysics; don't copy its functions here.
-- Install the log reader into this project's virtual environment as an editable package (`pip install -e "..\PETE Python Log Reader"`) and `import welllog`. This requires the log reader to have a `pyproject.toml`.
+- Install the log reader into this project's virtual environment as an editable package (`pip install -e ../pete-python-log-reader`) and `import welllog`. This requires the log reader to have a `pyproject.toml`.
 - The dashboard lives in this repo, because it is the downstream consumer of both.
 - Matching logs to production: the planned key was the **API number** (LAS `API`/`UWI` header), but RRC PDQ lease data has no API numbers, so the dashboard pairs a log and a lease by hand. If well-level data with API numbers is added later (e.g. RRC bulk well data), join on the 14-digit API normalized to digits only.
 - Drainage area (A) and Bo aren't in either dataset, so they are user inputs on the dashboard.
@@ -44,7 +44,8 @@ Architecture decisions:
 - `production/economics.py`: monthly DCF, IRR, breakeven, WTI loader.
 - `production/appraisal.py`: history + forecast volumes, recovery factor check.
 - `app.py`: Streamlit dashboard. `fetch_data.py`: refreshes `data/`.
-- Python runs in WSL Ubuntu (`~/.venvs/well-log`, shared with the log reader), not Windows. Run commands via `wsl -d Ubuntu -- bash -lc "..."`; complex Python is easiest as a script file, since PowerShell → bash quoting breaks inline code.
+- Both projects live in the WSL Ubuntu filesystem at `~/projects/` (Windows path `\\wsl.localhost\Ubuntu\home\jojoz\projects\`). There are no Windows copies.
+- Python runs in WSL Ubuntu (`~/.venvs/well-log`, shared with the log reader), not Windows. Run commands via `wsl -d Ubuntu -- bash -lc "cd ~/projects/pete-production-analyzer && ..."`; complex Python is easiest as a script file, since PowerShell → bash quoting breaks inline code.
 - `.claude/launch.json` defines the `dashboard` preview server (Streamlit on port 8501).
 
 The log reader provides `welllog.petrophysics.pay_flag` (cutoffs: VSH ≤ 0.4, PHI ≥ 0.08, SW ≤ 0.5; missing data never counts as pay) and `welllog.volumetrics.net_pay_summary` / `ooip`. Use these rather than reimplementing them.

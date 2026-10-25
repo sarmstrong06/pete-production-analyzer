@@ -3,7 +3,7 @@
 An upstream appraisal dashboard that takes a well from rock to dollars:
 
 1. **Well log** → net pay, porosity, water saturation (via the
-   [PETE Python Log Reader](../PETE%20Python%20Log%20Reader))
+   [PETE Python Log Reader](../pete-python-log-reader))
 2. **Volumetrics** → original oil in place (OOIP)
 3. **Decline curve** → Arps fit to real Texas Railroad Commission production, EUR
 4. **Cross-check** → recovery factor = EUR ÷ OOIP, flagged if implausible

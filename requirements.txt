@@ -6,4 +6,4 @@ plotly
 streamlit
 requests
 lasio
--e "../PETE Python Log Reader"
+-e ../pete-python-log-reader
