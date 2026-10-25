@@ -93,6 +93,14 @@ log's API number.
 | Production (KGS, by API number) | 180 Mbbl produced 2010-2026; EUR 203 Mbbl |
 | Cross-check | Recovery factor 27%, just above the typical 10-25% for a vertical conventional well |
 
+![Summary: rock to dollars for Nuss 1](docs/screenshots/summary.png)
+
+![Well log tracks over the Lansing-Kansas City, pay shaded](docs/screenshots/well_log.png)
+
+![Decline curves fitted to 16 years of production](docs/screenshots/forecast.png)
+
+![Economics: full-cycle and remaining (PDP) value](docs/screenshots/economics.png)
+
 The cross-check says "worth a second look": a 27% recovery factor suggests the well
 drains more than the assumed 40 acres (or the pay is thicker than the cutoffs
 count). Raising the drainage area to about 50 acres brings it into the typical

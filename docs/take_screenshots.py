@@ -24,7 +24,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1440, "height": 900}, device_scale_factor=1.5,
+        page = browser.new_page(viewport={"width": 1440, "height": 1180}, device_scale_factor=1.5,
                                 color_scheme="light")
         page.goto(URL)
         page.get_by_text("Upstream appraisal").first.wait_for(timeout=120_000)
@@ -34,7 +34,11 @@ def main():
         page.get_by_text("Producing well: its own production").click()
         settle(page)
         page.get_by_role("button", name="Look up production").click()
-        page.get_by_text("Kansas reports oil sales").wait_for(timeout=120_000)
+        try:
+            page.get_by_text("Kansas reports oil sales").wait_for(timeout=120_000)
+        except Exception:
+            page.screenshot(path=OUT / "debug_failed_lookup.png", full_page=True)
+            raise
         settle(page, 2500)
         page.screenshot(path=OUT / "summary.png")
 

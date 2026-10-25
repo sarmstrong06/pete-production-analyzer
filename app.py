@@ -132,9 +132,11 @@ st.set_page_config(page_title="Upstream Appraisal", page_icon="🛢️", layout=
 
 
 def style(fig, height=420):
+    # Legend below the plot, lower when an x-axis title would otherwise collide with it
+    x_titled = any(ax.title.text for ax in fig.select_xaxes())
     fig.update_layout(height=height, margin=dict(l=10, r=10, t=40, b=10),
                       plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                      legend=dict(orientation="h", y=-0.12, yanchor="top", x=0),
+                      legend=dict(orientation="h", y=-0.24 if x_titled else -0.12, yanchor="top", x=0),
                       hovermode="x unified")
     fig.update_xaxes(gridcolor=GRID, zeroline=False)
     fig.update_yaxes(gridcolor=GRID, zeroline=False)
