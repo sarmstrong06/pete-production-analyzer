@@ -1,4 +1,9 @@
-"""Capture the README screenshots from a running dashboard (the Nuss 1 example).
+"""Capture the README screenshots from a running dashboard.
+
+The screenshots show only public data: the Nuss 1 log (KCC, via the KGS)
+appraised as a prospect, and production from the Texas Railroad Commission.
+They don't show Kansas monthly production, which the KGS licenses for research
+use, not redistribution.
 
 Needs Playwright (pip install playwright && playwright install chromium) and the
 dashboard running:  streamlit run app.py
@@ -16,8 +21,23 @@ OUT = Path(__file__).parent / "screenshots"
 def settle(page, ms=1500):
     """Wait for Streamlit to finish rerunning."""
     page.wait_for_timeout(500)
-    page.wait_for_selector('[data-testid="stStatusWidget"]', state="detached", timeout=120_000)
+    page.wait_for_selector('[data-testid="stStatusWidget"]', state="detached", timeout=180_000)
     page.wait_for_timeout(ms)
+
+
+def click(page, text):
+    page.get_by_text(text, exact=True).first.click()
+    settle(page)
+
+
+def tab(page, name, path, scroll=0):
+    page.get_by_role("tab", name=name).click()
+    settle(page, 2500)
+    if scroll:
+        page.mouse.move(900, 600)
+        page.mouse.wheel(0, scroll)
+        settle(page, 800)
+    page.screenshot(path=path)
 
 
 def main():
@@ -29,37 +49,29 @@ def main():
         page.goto(URL)
         page.get_by_text("Upstream appraisal").first.wait_for(timeout=120_000)
         settle(page)
-        page.get_by_text("Real example: Nuss 1, Kansas").click()
-        settle(page)
-        page.get_by_text("Producing well: its own production").click()
-        settle(page)
-        page.get_by_role("button", name="Look up production").click()
-        try:
-            page.get_by_text("Kansas reports oil sales").wait_for(timeout=120_000)
-        except Exception:
-            page.screenshot(path=OUT / "debug_failed_lookup.png", full_page=True)
-            raise
+
+        # The real Nuss 1 log appraised as a prospect (vertical oil, typical assumptions)
+        click(page, "Real example: Nuss 1, Kansas")
         settle(page, 2500)
         page.screenshot(path=OUT / "summary.png")
+        tab(page, "1 · Well log", OUT / "well_log.png")
+        tab(page, "4 · Economics", OUT / "economics.png")
+        tab(page, "5 · Uncertainty", OUT / "uncertainty.png", scroll=520)
 
-        for tab, name in [("1 · Well log", "well_log"), ("3 · Production forecast", "forecast"),
-                          ("4 · Economics", "economics"), ("5 · Uncertainty", "uncertainty")]:
-            page.get_by_role("tab", name=tab).click()
-            settle(page, 2500)
-            if name == "uncertainty":  # scroll past the input table to the results and charts
-                page.mouse.move(900, 600)
-                page.mouse.wheel(0, 520)
-                settle(page, 800)
-            page.screenshot(path=OUT / f"{name}.png")
+        # Decline curves fitted to a Spraberry lease (Texas RRC data)
+        click(page, "Horizontal oil (tight)")
+        click(page, "Producing well: its own production")
+        click(page, "Example well")
+        # The cleanest-fitting example lease
+        page.locator('[data-testid="stSelectbox"]').filter(has_text="Spraberry oil lease").locator("input").click()
+        page.keyboard.type("ACT A (50678)")
+        page.keyboard.press("Enter")
+        settle(page)
+        tab(page, "3 · Production forecast", OUT / "forecast.png")
 
-        # A field type curve: a horizontal tight-oil prospect shaped like the bundled Spraberry wells
-        page.get_by_text("Horizontal oil (tight)", exact=True).click()
-        settle(page)
-        page.get_by_text("Prospect: field type curve", exact=True).click()
-        settle(page)
-        page.get_by_role("tab", name="3 · Production forecast").click()
-        settle(page, 2500)
-        page.screenshot(path=OUT / "type_curve.png")
+        # A horizontal tight-oil prospect shaped like the bundled Spraberry wells
+        click(page, "Prospect: field type curve")
+        tab(page, "3 · Production forecast", OUT / "type_curve.png")
         browser.close()
     print("Saved", sorted(f.name for f in OUT.glob("*.png")))
 

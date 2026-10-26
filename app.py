@@ -1145,10 +1145,11 @@ with summary_tab:
     m[3].metric(be_label, be_text)
 
     if mc:
-        st.markdown(f"**Uncertainty** ({mc['n']:,} simulations, tab 5): EUR {volume(mc['eur']['P90'], product)} "
-                    f"(P90) to {volume(mc['eur']['P10'], product)} (P10); NPV {money(mc['npv']['P90'])} to "
-                    f"{money(mc['npv']['P10'])}; **{mc['chance']:.0%} chance** the NPV is positive. "
-                    f"Biggest driver: {mc['tornado']['input'].iloc[0].split(' (')[0].lower()}.")
+        # Escape "$": Streamlit markdown reads text between two dollar signs as a math formula
+        st.markdown((f"**Uncertainty** ({mc['n']:,} simulations, tab 5): EUR {volume(mc['eur']['P90'], product)} "
+                     f"(P90) to {volume(mc['eur']['P10'], product)} (P10); NPV {money(mc['npv']['P90'])} to "
+                     f"{money(mc['npv']['P10'])}; **{mc['chance']:.0%} chance** the NPV is positive. "
+                     f"Biggest driver: {mc['tornado']['input'].iloc[0].split(' (')[0].lower()}.").replace("$", r"\$"))
 
     if source == SRC_SAMPLE:
         st.info("The synthetic test well is 12 ft thick with 3.5 ft of pay, so it holds very little. "

@@ -102,14 +102,6 @@ log's API number.
 | Production (KGS, by API number) | 180 Mbbl produced 2010-2026; EUR 203 Mbbl |
 | Cross-check | Recovery factor 27%, just above the typical 10-25% for a vertical conventional well |
 
-![Summary: rock to dollars for Nuss 1](docs/screenshots/summary.png)
-
-![Well log tracks over the Lansing-Kansas City, pay shaded](docs/screenshots/well_log.png)
-
-![Decline curves fitted to 16 years of production](docs/screenshots/forecast.png)
-
-![Economics: full-cycle and remaining (PDP) value](docs/screenshots/economics.png)
-
 The cross-check says "worth a second look": a 27% recovery factor suggests the well
 drains more than the assumed 40 acres (or the pay is thicker than the cutoffs
 count). Raising the drainage area to about 50 acres brings it into the typical
@@ -122,9 +114,28 @@ an 86% chance of a positive NPV, with recovery factor and drainage area the
 biggest drivers. The well went on to make 203 Mbbl, above the P10: consistent
 with the cross-check's hint that it drains more rock than a typical well.
 
+### Screenshots
+
+The Nuss 1 log appraised as a prospect:
+
+![Summary: rock to dollars for the Nuss 1 log as a prospect](docs/screenshots/summary.png)
+
+![Well log tracks over the Lansing-Kansas City, pay shaded](docs/screenshots/well_log.png)
+
+![Economics: drilling decision, cash flow and price sensitivity](docs/screenshots/economics.png)
+
 ![Uncertainty: P90/P50/P10, NPV distribution and tornado](docs/screenshots/uncertainty.png)
 
+Decline curves fitted to a Spraberry lease (Texas RRC data), and a horizontal
+prospect shaped like the Spraberry P50 type curve:
+
+![Decline curves fitted to a Spraberry lease](docs/screenshots/forecast.png)
+
 ![A horizontal prospect shaped like the field's P50 type curve](docs/screenshots/type_curve.png)
+
+The screenshots show only public data. Kansas monthly production, which the KGS
+licenses for research use rather than redistribution, is fetched live by the
+dashboard but not reproduced here.
 
 ## Method
 
