@@ -245,3 +245,9 @@ dashboard but not reproduced here.
   live futures strip.
 - Gas in place uses a single Bg; it doesn't model adsorbed gas, which matters in
   some shales.
+
+## License
+
+Code: MIT (see `LICENSE`). Data keeps its sources' terms: Texas RRC production
+and FRED prices are public; the Nuss 1 log is courtesy of the Kansas Corporation
+Commission via the KGS.
