@@ -34,17 +34,25 @@ Four well types set the starting assumptions (drainage area, recovery factor
 range, decline shape, costs): vertical conventional oil, horizontal tight oil,
 vertical conventional gas, and horizontal shale gas. All are editable.
 
-## Setup (Ubuntu / WSL)
+## Setup
 
-Uses the same virtual environment as the log reader. Run from this folder:
+The dashboard uses the [PETE Python Log Reader](https://github.com/sarmstrong06/pete-python-log-reader)
+for petrophysics, installed from the folder next to this one. Clone both side by side:
 
 ```bash
+git clone https://github.com/sarmstrong06/pete-python-log-reader.git
+git clone https://github.com/sarmstrong06/pete-production-analyzer.git
+cd pete-production-analyzer
+python3 -m venv ~/.venvs/well-log
 source ~/.venvs/well-log/bin/activate
 pip install -r requirements.txt
+python fetch_data.py   # optional: refreshes data/ and downloads the Kansas lease index
 ```
 
-This also installs the log reader as an editable package, so `import welllog` works
-and picks up changes to the log reader immediately.
+Python 3.10+ (developed on Ubuntu under WSL). `requirements.txt` installs the log
+reader as an editable package, so `import welllog` works and picks up changes to
+the log reader immediately. The Kansas API lookup needs the lease index that
+`fetch_data.py` downloads; everything else works without it.
 
 ## Run
 
